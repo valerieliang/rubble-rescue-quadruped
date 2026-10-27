@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import IntEnum
+from typing import Callable, Protocol
 
 import numpy as np
 
@@ -75,6 +76,17 @@ class Observation:
     robot_pos: np.ndarray      # (2,) estimated robot position
     sensor_radius: float
     detected: tuple[Detection, ...] = ()   # survivors actually sensed within the footprint
+    rescued: tuple[np.ndarray, ...] = ()   # positions of survivors reached since the last observation
+
+
+class Policy(Protocol):
+    """Search layer. Called at ~1 Hz; returns the next waypoint (2,) for the waypoint tracker."""
+
+    def act(self, obs: Observation) -> np.ndarray: ...
+
+
+# Travel-time estimate between two ground points (s). The sim/terrain side owns this.
+TravelTime = Callable[[np.ndarray, np.ndarray], float]
 
 
 @dataclass

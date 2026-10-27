@@ -49,8 +49,11 @@ class Belief:
         robot_pos = np.asarray(robot_pos, float)
         matched: set[int] = set()
         for d in detected:
-            i = self._nearest_track(d.pos, robot_pos, sensor_radius)
-            if i is None:
+            i = self._nearest_track(d.pos, robot_pos, sensor_radius, matched)
+            if i is None:   # drone missed this survivor: start a confirmed track
+                self.tracks.append(Track(np.array(d.pos, float), self.sigma_meas, 1.0,
+                                         d.priority, confirmed=True))
+                matched.add(len(self.tracks) - 1)
                 continue
             matched.add(i)
             self._positive_update(self.tracks[i], d)
@@ -58,9 +61,20 @@ class Belief:
             if i not in matched:
                 self._negative_update(t, robot_pos, sensor_radius)
 
-    def _nearest_track(self, pos, center, radius):
+    def remove_near(self, pos: np.ndarray) -> None:
+        """Drop the track of a survivor that has just been rescued at pos."""
+        pos = np.asarray(pos, float)
+        dists = [float(np.linalg.norm(t.mean - pos)) for t in self.tracks]
+        if dists:
+            i = int(np.argmin(dists))
+            if dists[i] < 3 * self.tracks[i].sigma + 2.0:
+                del self.tracks[i]
+
+    def _nearest_track(self, pos, center, radius, exclude=()):
         best, best_d = None, np.inf
         for i, t in enumerate(self.tracks):
+            if i in exclude:
+                continue
             d = float(np.linalg.norm(t.mean - pos))
             if d < best_d and d < 3 * t.sigma + radius:
                 best, best_d = i, d
