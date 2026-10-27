@@ -32,30 +32,39 @@ Metrics: priority-weighted rescue score (oracle-normalized), time to critical su
 
 Midterm (due Nov 11): Q1-Q2.
 
-- [x] Shared interface drafts (`rescue/interfaces.py`)
+- [x] Shared interface drafts (`rescue/interfaces.py`, see `docs/INTERFACES.md`)
 - [x] Drone prior: position noise, misses, false positives, class errors
 - [x] Belief with Bayes update
-- [ ] Simulator (Go2 reduced-order model, rubble/hazard regions, seeded site generator)
-- [ ] Greedy search layer
-- [ ] Baselines 1-2, metrics, batch runner
+- [x] Greedy search layer (priority-weighted, urgency-discounted) and baselines 1-2
+- [x] Metrics: weighted rescue score, oracle normalization, time to critical, rescue rate
+- [x] Toy simulator (stand-in) so the above run end to end
+- [ ] Real simulator (Go2 reduced-order model, rubble/hazard regions) and batch runner (Sahil)
+- [ ] Q1 sweep (prior noise, false-positive rate), Q2 comparison, plots
 - [ ] MPC, CBF filter, state inference, legibility (after midterm)
 
 ## Layout
 
 ```
 rescue/
-  interfaces.py    # Site, Survivor, Detection, Observation, RunLog, priority classes
+  interfaces.py    # Site, Survivor, Detection, Observation, Policy, RunLog, priority classes
   drone_prior.py   # PriorConfig, generate_detections
   belief.py        # Track, Belief (Bayes update from robot observations)
+  search.py        # PriorSearch (greedy), Coverage (lawnmower)
+  baselines.py     # policy factories: coverage, nearest-first, priority
+  metrics.py       # rescue score, oracle, time to critical, rescue rate
+  terrain.py       # terrain speed + travel-time estimate (placeholder)
+  toy_sim.py       # stand-in simulator + seeded site generator
+scripts/smoke_test.py   # compare methods over N sites
 tests/
-  test_belief.py
+docs/INTERFACES.md
 ```
 
 ## Setup
 
 ```
-pip install -e ".[dev]"
-pytest
+pip install numpy scipy matplotlib pytest
+python -m pytest
+PYTHONPATH=. python scripts/smoke_test.py 20
 ```
 
 Requires Python 3.10+, numpy, scipy, matplotlib.
