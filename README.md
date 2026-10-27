@@ -62,7 +62,7 @@ docs/INTERFACES.md
 ## Setup
 
 ```
-pip install numpy scipy matplotlib pytest
+pip install -r requirements.txt
 python -m pytest
 PYTHONPATH=. python scripts/smoke_test.py 20
 ```
