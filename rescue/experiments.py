@@ -6,6 +6,7 @@ same detections (paired comparison).
 from __future__ import annotations
 
 import csv
+import os
 from dataclasses import replace
 from functools import lru_cache
 from multiprocessing import Pool
@@ -15,7 +16,11 @@ import numpy as np
 from . import baselines
 from .drone_prior import PriorConfig
 from .metrics import oracle_score, summarize
-from .toy_sim import generate_site, run_episode
+
+if os.environ.get("RESCUE_SIM", "toy") == "go2":
+    from .sim import generate_site, run_episode
+else:
+    from .toy_sim import generate_site, run_episode
 
 METHODS = {"coverage": baselines.coverage_policy,
            "nearest": baselines.nearest_first_policy,
