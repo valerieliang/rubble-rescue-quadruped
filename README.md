@@ -30,21 +30,18 @@ Metrics: priority-weighted rescue score (oracle-normalized), time to critical su
 
 ## Status
 
-Midterm (due Nov 11): Q1-Q2.
+Implemented (Q1-Q2):
 
-- [x] Shared interface drafts (`rescue/interfaces.py`, see `docs/INTERFACES.md`)
-- [x] Drone prior: position noise, misses, false positives, class errors
-- [x] Belief with Bayes update
-- [x] Greedy search layer (priority-weighted, urgency-discounted) and baselines 1-2
-- [x] Metrics: weighted rescue score, oracle normalization, time to critical, rescue rate
-- [x] Toy simulator (stand-in) so the above run end to end
-- [x] Reduced-order Go2 simulator (`rescue/sim.py`: unicycle, waypoint tracker, disc sensor) and batch runner (`rescue/experiments.py`)
-- [x] Q1 sweep (prior noise, false-positive rate), Q2 comparison (+ class-accuracy sweep), plots (`scripts/run_sweeps.py`, `scripts/plot_results.py`)
-- [x] Results frozen Nov 6 (Go2 sim, 40 sites per Q1 config, 160 for Q2)
-- [ ] Midterm write-up
-- [ ] MPC, CBF filter, state inference, legibility (after midterm)
+- Drone prior: position noise, misses, false positives, class errors
+- Belief with Bayes update
+- Greedy search layer (priority-weighted, urgency-discounted) and baselines 1-2
+- Metrics: weighted rescue score, oracle normalization, time to critical, rescue rate
+- Simulators: point-robot reference (`toy_sim.py`) and reduced-order Go2 (`sim.py`), with a parallel batch runner
+- Q1 sweep (prior noise, false-positive rate), Q2 comparison with a class-accuracy sweep, and plots
 
-## Midterm results (Go2 sim, T = 600 s, default prior: sigma 3 m, 1 false positive, 10% miss, 80% class accuracy)
+Not yet implemented: MPC approach planner, CBF safety filter, state inference, legibility (Q3-Q5).
+
+## Results (Go2 sim, T = 600 s, default prior: sigma 3 m, 1 false positive, 10% miss, 80% class accuracy)
 
 Oracle-normalized score, mean over 40 sites per config (`runs/q1_sigma.csv`, `runs/q1_fp.csv`):
 
@@ -68,11 +65,14 @@ rescue/
   search.py        # PriorSearch (greedy), Coverage (lawnmower)
   baselines.py     # policy factories: coverage, nearest-first, priority
   metrics.py       # rescue score, oracle, time to critical, rescue rate
-  terrain.py       # terrain speed + travel-time estimate (placeholder)
-  toy_sim.py       # point-robot stand-in simulator + seeded site generator
+  terrain.py       # terrain speed + travel-time estimate
+  toy_sim.py       # point-robot reference simulator + seeded site generator
   sim.py           # reduced-order Go2 simulator (used for reported results)
   experiments.py   # parallel seeded job runner, CSV, paired statistics
 scripts/smoke_test.py   # compare methods over N sites
+scripts/run_sweeps.py   # Q1/Q2 sweeps -> runs/*.csv
+scripts/plot_results.py # figures from runs/*.csv
+scripts/render_site.py  # site and rollout figures
 tests/
 docs/INTERFACES.md
 ```
