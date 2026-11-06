@@ -1,4 +1,4 @@
-# Interface proposal (for Wed Oct 28 with Sahil)
+# Interfaces (proposed Oct 28; decisions at the bottom)
 
 Source of truth: [rescue/interfaces.py](../rescue/interfaces.py). Frame: world, metres, ground-plane x/y.
 
@@ -24,3 +24,15 @@ Source of truth: [rescue/interfaces.py](../rescue/interfaces.py). Frame: world, 
 7. **Run length** `T`: 600 s?
 8. **Logging**: file format for runs (npz per run? one JSON per run?) so the batch runner and metrics agree.
 9. **Reduced-order vs Isaac Sim** for the midterm (proposal says Isaac; timeline says reduced-order Go2). Suggest: reduced-order for midterm, state it in the report.
+
+## Decisions taken for the midterm (implemented in `rescue/sim.py`)
+
+1. Sensor: disc, radius 5 m, p_detect 0.9, position noise 0.5 m, true class.
+2. Robot pose: true pose for now; an estimate is swapped in for Q3.
+3. Rescue: reaching the 1.5 m standoff radius, no dwell time.
+4. Hazards: traversable but slow (0.25x); CBF barriers come after the midterm.
+5. Travel time: `sim.travel_time` integrates 1/speed along the segment (the policies use the equivalent `terrain.travel_time`).
+6. Clock: the sim owns time; dynamics at 0.1 s, policy at 1 Hz.
+7. Run length T = 600 s.
+8. Logging: `RunLog` per run; the batch runner writes one CSV row of metrics per (site, method, config).
+9. Reduced-order Go2 (unicycle with rate-limited speed) for the midterm; stated in the report.
