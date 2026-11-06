@@ -40,11 +40,13 @@ class Coverage:
 class PriorSearch:
     def __init__(self, detections: list[Detection], cfg: PriorConfig, bounds,
                  travel_time: TravelTime, sensor_radius: float, start: np.ndarray,
-                 horizon: float, mode: str = "priority", r_min: float = 0.1):
+                 horizon: float, mode: str = "priority", r_min: float = 0.1,
+                 dist_exp: float = 1.0):
         assert mode in ("priority", "nearest")
         self.belief = Belief(detections, cfg)
         self.coverage = Coverage(bounds, sensor_radius, start)
         self.travel_time, self.horizon, self.mode, self.r_min = travel_time, horizon, mode, r_min
+        self.dist_exp = dist_exp   # exponent on (tau+1) in the priority score; 1 = reward per second
 
     def act(self, obs: Observation) -> np.ndarray:
         pos = np.asarray(obs.robot_pos, float)
@@ -61,7 +63,7 @@ class PriorSearch:
                 continue
             if self.mode == "priority":
                 score = (t.r * PRIORITY_WEIGHT[t.priority]
-                         * np.exp(-PRIORITY_DECAY[t.priority] * arrive) / (tau + 1.0))
+                         * np.exp(-PRIORITY_DECAY[t.priority] * arrive) / (tau + 1.0) ** self.dist_exp)
             else:
                 score = -tau
             if score > best_score:
