@@ -40,8 +40,23 @@ Midterm (due Nov 11): Q1-Q2.
 - [x] Toy simulator (stand-in) so the above run end to end
 - [x] Reduced-order Go2 simulator (`rescue/sim.py`: unicycle, waypoint tracker, disc sensor) and batch runner (`rescue/experiments.py`)
 - [x] Q1 sweep (prior noise, false-positive rate), Q2 comparison (+ class-accuracy sweep), plots (`scripts/run_sweeps.py`, `scripts/plot_results.py`)
-- [ ] Results freeze (Nov 6) and midterm write-up
+- [x] Results frozen Nov 6 (Go2 sim, 40 sites per Q1 config, 160 for Q2)
+- [ ] Midterm write-up
 - [ ] MPC, CBF filter, state inference, legibility (after midterm)
+
+## Midterm results (Go2 sim, T = 600 s, default prior: sigma 3 m, 1 false positive, 10% miss, 80% class accuracy)
+
+Oracle-normalized score, mean over 40 sites per config (`runs/q1_sigma.csv`, `runs/q1_fp.csv`):
+
+| sigma (m) | 1 | 3 | 6 | 10 | 15 | 25 |
+|---|---|---|---|---|---|---|
+| no-prior coverage | 0.245 | 0.245 | 0.245 | 0.245 | 0.245 | 0.245 |
+| prior + priority | 0.878 | 0.791 | 0.608 | 0.419 | 0.282 | 0.105 |
+
+- **Q1:** the prior roughly triples the score at sigma = 3 m (0.79 vs 0.25) and keeps helping until sigma is about 15 m, where it meets coverage; at 25 m it is worse than no prior. False positives hurt much less: even 20 expected false positives leave the score at 0.50, about twice coverage.
+- **Q2:** priority-weighted vs nearest-first, paired over 160 sites: score +0.014 +/- 0.016, time to critical -9.6 s +/- 15.2 s, rescue rate +0.005 +/- 0.009. No significant difference at the default config. The score gap grows with drone class accuracy (-0.003 at 40%, +0.029 at 100%) but stays within the CI at every level.
+
+Regenerate with `scripts/run_sweeps.py` and `scripts/plot_results.py`. The Go2 and toy simulators give near-identical numbers; hazards are slow but traversable and robot pose is true pose, so Q3 will need a harder setup.
 
 ## Layout
 
