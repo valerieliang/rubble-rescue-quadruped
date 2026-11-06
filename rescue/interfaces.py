@@ -1,8 +1,7 @@
-"""Shared interfaces between the simulator (Sahil) and search/belief code (Valerie).
+"""Shared interfaces between the simulator and the search/belief code.
 
-DRAFT: to be agreed on Wed Oct 28. Everything here is plain dataclasses + numpy so
-either side can change a field without touching the other's internals.
-Frame: world frame, metres, x/y on the ground plane.
+Everything here is plain dataclasses + numpy, so either side can change its internals without
+touching the other. Frame: world frame, metres, x/y on the ground plane.
 """
 from __future__ import annotations
 
@@ -28,7 +27,7 @@ class ResponseState(IntEnum):
 
 
 # Reward is sum_i w_i * exp(-lambda_i * tau_i) * 1[tau_i <= T]; w and lambda come from the class.
-# Values are placeholders to tune.
+# Weights and decay rates are modelling choices, not calibrated to real triage outcomes.
 PRIORITY_WEIGHT = {Priority.STABLE: 1.0, Priority.URGENT: 2.0, Priority.CRITICAL: 4.0}
 PRIORITY_DECAY = {Priority.STABLE: 0.002, Priority.URGENT: 0.005, Priority.CRITICAL: 0.01}  # 1/s
 

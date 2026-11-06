@@ -1,4 +1,4 @@
-"""Terrain speed model and travel-time estimate. Sahil's sim can replace this with real traversability."""
+"""Terrain speed model and straight-line travel-time estimate over rubble and hazard regions."""
 from __future__ import annotations
 
 import math
