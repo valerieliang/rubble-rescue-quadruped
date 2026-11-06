@@ -1,7 +1,7 @@
-"""Stand-in simulator: point robot, disc sensor, seeded site generator.
+"""Point-robot simulator with a disc sensor, plus the seeded site generator.
 
-Only here so search, baselines, and metrics can be built and tested before the real simulator
-(Go2 reduced-order model) lands. Replace with Sahil's sim; the Observation/RunLog API is the contract.
+Kinematic reference simulator (no turning or acceleration limits). ``sim.py`` adds the Go2
+reduced-order dynamics; both share the Observation/RunLog API and the site generator.
 """
 from __future__ import annotations
 
