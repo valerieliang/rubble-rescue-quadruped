@@ -79,7 +79,7 @@ def q2_figure(path, out):
     print("Q2: priority - nearest-first, paired over sites (mean +/- 95% CI, win rate)")
     for ax, (metric, label, lower_better) in zip(axes, METRICS):
         d = paired_diff(rows, "priority", "nearest", metric)
-        print(f"  {label:34s} {d['mean']:+.3f} +/- {d['ci']:.3f}   priority better on {d['win_rate']:.0%}   n={d['n']}")
+        print(f"  {label:34s} {d['mean']:+.3f} +/- {d['ci']:.3f}   priority higher on {d["win_rate"]:.0%} of sites (rest tied or lower)   n={d['n']}")
         ax.errorbar([d["mean"]], [0], xerr=[d["ci"]], fmt="o", color=STYLE["priority"][0], capsize=3, ms=5)
         ax.axvline(0, color=MUTED, lw=1)
         ax.set_yticks([])
@@ -97,12 +97,11 @@ def q2_class_figure(path, out):
     for ax, (metric, label, lower_better) in zip(axes, METRICS):
         ds = [paired_diff([r for r in rows if r["p_class_correct"] == p], "priority", "nearest", metric) for p in ps]
         for p, d in zip(ps, ds):
-            print(f"  {metric:18s} p_class={p:.1f}: {d['mean']:+.3f} +/- {d['ci']:.3f}  win {d['win_rate']:.0%}")
+            print(f"  {metric:18s} p_class={p:.1f}: {d['mean']:+.3f} +/- {d['ci']:.3f}  higher on {d["win_rate"]:.0%}")
         ax.errorbar(ps, [d["mean"] for d in ds], yerr=[d["ci"] for d in ds], fmt="o-", color=STYLE["priority"][0], capsize=3, ms=4)
         ax.axhline(0, color=MUTED, lw=1)
         ax.set_xlabel("drone class accuracy")
-        ax.set_ylabel(f"{label}
-(priority - nearest{', lower better' if lower_better else ''})", fontsize=7)
+        ax.set_ylabel(f"{label}\n(priority - nearest{', lower better' if lower_better else ''})", fontsize=7)
     fig.savefig(out)
     plt.close(fig)
 
