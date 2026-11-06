@@ -1,6 +1,6 @@
 """Q1 / Q2 sweeps on the stand-in sim. Writes CSVs to runs/.
 
-Usage: PYTHONPATH=. python scripts/run_sweeps.py [n_sites]
+Usage: RESCUE_SIM=go2 PYTHONPATH=. python scripts/run_sweeps.py [n_sites]
 """
 import os
 import sys
@@ -31,3 +31,8 @@ print("q1_grid", len(rows), "rows")
 rows = run_grid([BASE], ["nearest", "priority"], range(4 * N))
 save_csv(rows, "runs/q2_default.csv")
 print("q2_default", len(rows), "rows")
+
+# Q2 vs. class accuracy: priority weighting should only help when the drone's classes are reliable.
+rows = run_grid(sweep_cfgs(BASE, p_class_correct=[0.4, 0.6, 0.8, 0.9, 1.0]), ["nearest", "priority"], range(4 * N))
+save_csv(rows, "runs/q2_class.csv")
+print("q2_class", len(rows), "rows")

@@ -87,7 +87,7 @@ def paired_diff(rows: list[dict], a: str, b: str, metric: str) -> dict:
     """a - b per site (same seed + config); returns mean, 95% half-width, and fraction of sites a > b."""
     by = {}
     for r in rows:
-        by.setdefault((r["seed"], r["sigma_pos"], r["n_false_pos"]), {})[r["method"]] = r[metric]
+        by.setdefault((r["seed"], r["sigma_pos"], r["n_false_pos"], r["p_class_correct"]), {})[r["method"]] = r[metric]
     d = np.array([v[a] - v[b] for v in by.values() if a in v and b in v], float)
     d = d[~np.isnan(d)]
     m, h = mean_ci(d)
