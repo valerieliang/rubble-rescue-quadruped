@@ -10,14 +10,14 @@ from .terrain import travel_time
 
 
 def _make(mode: str, use_prior: bool, site: Site, detections, cfg: PriorConfig,
-          sensor_radius: float, horizon: float) -> PriorSearch:
+          sensor_radius: float, horizon: float, **kw) -> PriorSearch:
     return PriorSearch(detections if use_prior else [], cfg, site.bounds,
-                       partial(travel_time, site), sensor_radius, site.start, horizon, mode)
+                       partial(travel_time, site), sensor_radius, site.start, horizon, mode, **kw)
 
 
-def priority_policy(site, detections, cfg, sensor_radius=5.0, horizon=600.0):
+def priority_policy(site, detections, cfg, sensor_radius=5.0, horizon=600.0, **kw):
     """Ours: prior + priority-weighted, urgency-discounted greedy."""
-    return _make("priority", True, site, detections, cfg, sensor_radius, horizon)
+    return _make("priority", True, site, detections, cfg, sensor_radius, horizon, **kw)
 
 
 def nearest_first_policy(site, detections, cfg, sensor_radius=5.0, horizon=600.0):
