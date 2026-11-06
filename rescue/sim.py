@@ -12,7 +12,7 @@ accepts, so everything above the tracker transfers to hardware unchanged.
     v'       = (v_cmd - v) rate-limited by max_accel  (first-order velocity response)
 
 Forward speed is capped by the terrain under the robot (``terrain.speed_at``: open / rubble /
-hazard). Hazards are slow but traversable, as agreed for the midterm; CBF barriers come later.
+hazard). Hazards are slow but traversable (no barrier constraints in this model).
 
 Timing: dynamics step at ``sim_dt`` (0.1 s). The policy is called every ``dt`` (1 s) with an
 Observation; between calls the tracker drives toward the last waypoint. The sim owns the clock.
@@ -39,7 +39,7 @@ __all__ = ["Go2Params", "generate_site", "run_episode", "travel_time", "make_tra
 
 @dataclass(frozen=True)
 class Go2Params:
-    """Reduced-order Go2 parameters (placeholders; conservative relative to the real robot)."""
+    """Reduced-order Go2 parameters (conservative relative to the real robot; not identified from hardware)."""
     speed_scale: float = 1.0      # multiplies terrain.speed_at (1.0 keeps the 1 m/s open-ground cap)
     max_turn_rate: float = 1.5    # rad/s
     max_accel: float = 1.0        # m/s^2, forward speed rate limit
@@ -114,7 +114,7 @@ def run_episode(site: Site, make_policy: Callable, prior_cfg: PriorConfig, seed:
                 sim_dt: float = 0.1, params: Go2Params | None = None,
                 heading0: float | None = None) -> RunLog:
     """Run one episode. ``make_policy(site, detections) -> Policy``; the policy only sees
-    Observations (true pose for now; Q3 will swap in an estimate).
+    Observations (the robot pose in an Observation is the true pose).
 
     ``heading0=None`` starts the robot facing its first waypoint, so it isn't charged a turn
     the toy sim never had. Pass a value to start from a fixed heading instead.
