@@ -89,8 +89,27 @@ def q2_figure(path, out):
     plt.close(fig)
 
 
+def q2_class_figure(path, out):
+    rows = load_csv(path)
+    ps = sorted({r["p_class_correct"] for r in rows})
+    fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.2), constrained_layout=True)
+    print("Q2 vs class accuracy: priority - nearest (mean +/- 95% CI)")
+    for ax, (metric, label, lower_better) in zip(axes, METRICS):
+        ds = [paired_diff([r for r in rows if r["p_class_correct"] == p], "priority", "nearest", metric) for p in ps]
+        for p, d in zip(ps, ds):
+            print(f"  {metric:18s} p_class={p:.1f}: {d['mean']:+.3f} +/- {d['ci']:.3f}  win {d['win_rate']:.0%}")
+        ax.errorbar(ps, [d["mean"] for d in ds], yerr=[d["ci"] for d in ds], fmt="o-", color=STYLE["priority"][0], capsize=3, ms=4)
+        ax.axhline(0, color=MUTED, lw=1)
+        ax.set_xlabel("drone class accuracy")
+        ax.set_ylabel(f"{label}
+(priority - nearest{', lower better' if lower_better else ''})", fontsize=7)
+    fig.savefig(out)
+    plt.close(fig)
+
+
 sweep_figure("runs/q1_sigma.csv", "sigma_pos", "position noise sigma (m)", "runs/figures/q1_sigma.png")
 sweep_figure("runs/q1_fp.csv", "n_false_pos", "expected false positives", "runs/figures/q1_fp.png")
 heatmap("runs/q1_grid.csv", "runs/figures/q1_heatmap.png")
 q2_figure("runs/q2_default.csv", "runs/figures/q2_paired.png")
+q2_class_figure("runs/q2_class.csv", "runs/figures/q2_class.png")
 print("figures in runs/figures/")
