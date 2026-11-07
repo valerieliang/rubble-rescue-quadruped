@@ -29,7 +29,7 @@ from typing import Callable
 import numpy as np
 
 from .drone_prior import PriorConfig, generate_detections
-from .interfaces import Detection, Observation, RunLog, Site, TravelTime
+from .interfaces import STANDOFF_RADIUS, Detection, Observation, RunLog, Site, TravelTime
 from .terrain import speed_at
 from .toy_sim import generate_site  # re-exported: same seeded site generator
 
@@ -110,7 +110,7 @@ def make_travel_time(site: Site, params: Go2Params | None = None, ds: float = 0.
 
 def run_episode(site: Site, make_policy: Callable, prior_cfg: PriorConfig, seed: int,
                 method: str = "", T: float = 600.0, dt: float = 1.0, sensor_radius: float = 5.0,
-                p_detect: float = 0.9, sigma_meas: float = 0.5, standoff: float = 1.5,
+                p_detect: float = 0.9, sigma_meas: float = 0.5, standoff: float = STANDOFF_RADIUS,
                 sim_dt: float = 0.1, params: Go2Params | None = None,
                 heading0: float | None = None) -> RunLog:
     """Run one episode. ``make_policy(site, detections) -> Policy``; the policy only sees
