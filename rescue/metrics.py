@@ -5,9 +5,11 @@ from functools import partial
 from itertools import permutations
 
 import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import dijkstra
 
-from .interfaces import PRIORITY_DECAY, PRIORITY_WEIGHT, Priority, RunLog, Site
-from .terrain import travel_time
+from .interfaces import PRIORITY_DECAY, PRIORITY_WEIGHT, STANDOFF_RADIUS, Priority, RunLog, Site
+from .terrain import BASE_SPEED, REGION_SPEED, travel_time
 
 
 def _reward(priority: Priority, tau: float, T: float) -> float:
@@ -19,13 +21,71 @@ def rescue_score(site: Site, log: RunLog, T: float) -> float:
                for s in site.survivors if s.id in log.rescue_times)
 
 
-def oracle_score(site: Site, T: float, travel=None) -> float:
+def _leg_time(travel, a: np.ndarray, b: np.ndarray, shrink_a: float, shrink_b: float) -> float:
+    """Straight-line travel time a -> b where the robot may start `shrink_a` metres closer to b (it is
+    already at the previous survivor's standoff circle) and stops `shrink_b` metres short of it."""
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    d = b - a
+    L = float(np.linalg.norm(d))
+    if L <= shrink_a + shrink_b:
+        return 0.0
+    u = d / L
+    return travel(a + u * shrink_a, b - u * shrink_b)
+
+
+_NEIGHBOURS = ((1, 0), (0, 1), (1, 1), (1, -1), (2, 1), (1, 2), (2, -1), (1, -2))
+
+
+def _grid_times(site: Site, sources: list[np.ndarray], cell: float = 0.5) -> np.ndarray:
+    """Terrain-aware shortest travel times (s) from each source to every other source, by Dijkstra
+    on a 16-neighbour grid whose edge cost is distance / terrain speed. Returns len(sources)^2."""
+    xmin, ymin, xmax, ymax = site.bounds
+    nx, ny = int(round((xmax - xmin) / cell)) + 1, int(round((ymax - ymin) / cell)) + 1
+    gx, gy = np.meshgrid(xmin + cell * np.arange(nx), ymin + cell * np.arange(ny), indexing="ij")
+    speed = np.full(gx.shape, BASE_SPEED)
+    for r in site.regions:
+        inside = (gx >= r.xmin) & (gx <= r.xmax) & (gy >= r.ymin) & (gy <= r.ymax)
+        speed = np.where(inside, np.minimum(speed, BASE_SPEED * REGION_SPEED[r.kind]), speed)
+    inv = 1.0 / speed
+    idx = np.arange(nx * ny).reshape(nx, ny)
+    rows, cols, w = [], [], []
+    for dx, dy in _NEIGHBOURS:
+        xs, xe = slice(0, nx - dx), slice(dx, nx)
+        ys, ye = (slice(0, ny - dy), slice(dy, ny)) if dy >= 0 else (slice(-dy, ny), slice(0, ny + dy))
+        rows.append(idx[xs, ys].ravel())
+        cols.append(idx[xe, ye].ravel())
+        w.append((np.hypot(dx, dy) * cell * 0.5 * (inv[xs, ys] + inv[xe, ye])).ravel())
+    graph = coo_matrix((np.concatenate(w), (np.concatenate(rows), np.concatenate(cols))),
+                       shape=(nx * ny,) * 2).tocsr()
+    nodes = [int(np.clip(round((p[0] - xmin) / cell), 0, nx - 1)) * ny
+             + int(np.clip(round((p[1] - ymin) / cell), 0, ny - 1)) for p in sources]
+    dist = dijkstra(graph, directed=False, indices=nodes)
+    return dist[:, nodes]
+
+
+def oracle_score(site: Site, T: float, travel=None, standoff: float = STANDOFF_RADIUS) -> float:
     """Best visiting order with perfect knowledge of positions (brute force, <= 8 survivors).
-    Visits to the survivor point rather than the standoff radius, so ratios can be slightly pessimistic."""
-    travel = travel or partial(travel_time, site)
+
+    A survivor counts as rescued at the standoff radius, as in the simulators. Leg times are the
+    cheaper of the straight-line estimate and a terrain-aware shortest path (the robot may detour
+    around slow terrain), minus the standoff slack at each end, so the oracle is a relaxation:
+    it ignores robot dynamics and never does worse than the policies it normalizes.
+    Pass ``travel`` to use straight-line legs only.
+    """
     pts = [site.start] + [s.pos for s in site.survivors]
     n = len(site.survivors)
-    D = np.array([[travel(a, b) for b in pts] for a in pts])
+    straight = travel or partial(travel_time, site)
+    G = None if travel else _grid_times(site, pts)
+    slack = 2 * standoff / BASE_SPEED + 1.0   # standoff at both ends, plus grid snapping error
+    D = np.zeros((n + 1, n + 1))
+    for i, a in enumerate(pts):
+        for j, b in enumerate(pts):
+            if i == j:
+                continue
+            t = _leg_time(straight, a, b, standoff if i else 0.0, standoff)
+            if G is not None:
+                t = min(t, max(0.0, G[i, j] - (slack if i else slack / 2)))
+            D[i, j] = t
     best = 0.0
     for order in permutations(range(1, n + 1)):
         t, prev, tot = 0.0, 0, 0.0
