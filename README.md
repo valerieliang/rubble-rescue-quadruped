@@ -47,13 +47,15 @@ Oracle-normalized score, mean over 40 sites per config (`runs/q1_sigma.csv`, `ru
 
 | sigma (m) | 1 | 3 | 6 | 10 | 15 | 25 |
 |---|---|---|---|---|---|---|
-| no-prior coverage | 0.245 | 0.245 | 0.245 | 0.245 | 0.245 | 0.245 |
-| prior + priority | 0.878 | 0.791 | 0.608 | 0.419 | 0.282 | 0.105 |
+| no-prior coverage | 0.228 | 0.228 | 0.228 | 0.228 | 0.228 | 0.228 |
+| prior + priority | 0.810 | 0.729 | 0.560 | 0.386 | 0.261 | 0.097 |
 
-- **Q1:** the prior roughly triples the score at sigma = 3 m (0.79 vs 0.25) and keeps helping until sigma is about 15 m, where it meets coverage; at 25 m it is worse than no prior. False positives hurt much less: even 20 expected false positives leave the score at 0.50, about twice coverage.
-- **Q2:** priority-weighted vs nearest-first, paired over 160 sites: score +0.014 +/- 0.016, time to critical -9.6 s +/- 15.2 s, rescue rate +0.005 +/- 0.009. No significant difference at the default config. The score gap grows with drone class accuracy (-0.003 at 40%, +0.029 at 100%) but stays within the CI at every level.
+The oracle is a terrain-aware upper bound (shortest paths over rubble and hazards, standoff radius at each survivor, no robot dynamics), so normalized scores never exceed 1 (observed maximum 0.993).
 
-Regenerate with `scripts/run_sweeps.py` and `scripts/plot_results.py`. The Go2 and toy simulators give near-identical numbers; hazards are slow but traversable and robot pose is true pose, so Q3 will need a harder setup.
+- **Q1:** the prior triples the score at sigma = 3 m (0.73 vs 0.23) and the gain shrinks steadily with noise until sigma is about 15 m, where it is roughly equal to coverage; at 25 m it is worse than no prior. False positives hurt much less: even 20 expected false positives leave the score at 0.46, about twice coverage.
+- **Q2:** priority-weighted vs nearest-first, paired over 160 sites: score +0.013 +/- 0.014, time to critical -9.6 s +/- 15.2 s, rescue rate +0.005 +/- 0.009. No significant difference at the default config. The score gap grows with drone class accuracy (-0.003 at 40%, +0.026 at 100%) but stays within the CI at every level.
+
+Regenerate with `scripts/run_sweeps.py` and `scripts/plot_results.py`. The Go2 and toy simulators give near-identical numbers; hazards are slow but traversable and robot pose is true pose.
 
 ## Layout
 
