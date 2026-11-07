@@ -29,6 +29,7 @@ class ResponseState(IntEnum):
 # Reward is sum_i w_i * exp(-lambda_i * tau_i) * 1[tau_i <= T]; w and lambda come from the class.
 # Weights and decay rates are modelling choices, not calibrated to real triage outcomes.
 PRIORITY_WEIGHT = {Priority.STABLE: 1.0, Priority.URGENT: 2.0, Priority.CRITICAL: 4.0}
+STANDOFF_RADIUS = 1.5   # m; a survivor counts as rescued once the robot is this close
 PRIORITY_DECAY = {Priority.STABLE: 0.002, Priority.URGENT: 0.005, Priority.CRITICAL: 0.01}  # 1/s
 
 

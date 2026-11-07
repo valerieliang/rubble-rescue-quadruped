@@ -10,7 +10,7 @@ from typing import Callable
 import numpy as np
 
 from .drone_prior import PriorConfig, generate_detections
-from .interfaces import (Detection, Observation, Priority, Region, ResponseState, RunLog, Site,
+from .interfaces import (STANDOFF_RADIUS, Detection, Observation, Priority, Region, ResponseState, RunLog, Site,
                          Survivor)
 from .terrain import speed_at
 
@@ -39,7 +39,7 @@ def generate_site(seed: int, size: float = 100.0) -> Site:
 
 def run_episode(site: Site, make_policy: Callable, prior_cfg: PriorConfig, seed: int,
                 method: str = "", T: float = 600.0, dt: float = 1.0, sensor_radius: float = 5.0,
-                p_detect: float = 0.9, sigma_meas: float = 0.5, standoff: float = 1.5) -> RunLog:
+                p_detect: float = 0.9, sigma_meas: float = 0.5, standoff: float = STANDOFF_RADIUS) -> RunLog:
     """make_policy(site, detections) -> Policy. The policy only gets Observations."""
     rng = np.random.default_rng(seed)
     policy = make_policy(site, generate_detections(site, prior_cfg, rng))
