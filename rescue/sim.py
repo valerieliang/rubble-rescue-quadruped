@@ -29,9 +29,9 @@ from typing import Callable
 import numpy as np
 
 from .drone_prior import PriorConfig, generate_detections
-from .interfaces import STANDOFF_RADIUS, Detection, Observation, RunLog, Site, TravelTime
+from .interfaces import (STANDOFF_RADIUS, Detection, Observation, Priority, Region, ResponseState, RunLog, Site,
+                         Survivor, TravelTime)
 from .terrain import speed_at
-from .toy_sim import generate_site  # re-exported: same seeded site generator
 
 __all__ = ["Go2Params", "generate_site", "run_episode", "travel_time", "make_travel_time",
            "track_waypoint", "step_unicycle"]
@@ -46,6 +46,29 @@ class Go2Params:
     k_heading: float = 2.0        # turn-rate gain on heading error (1/s)
     k_arrive: float = 1.0         # forward speed <= k_arrive * distance, so it slows to stop
     arrive_tol: float = 0.05      # m; closer than this counts as at the waypoint
+
+
+def generate_site(seed: int, size: float = 100.0) -> Site:
+    """Seeded site generator. Must match ``toy_sim.generate_site`` so a seed gives the same site in both sims."""
+    rng = np.random.default_rng(seed)
+
+    def rect(kind, lo, hi):
+        w, h = rng.uniform(lo, hi, 2)
+        x, y = rng.uniform(0, size - w), rng.uniform(0, size - h)
+        return Region(kind, x, y, x + w, y + h)
+
+    regions = tuple([rect("rubble", 10, 30) for _ in range(rng.integers(4, 7))]
+                    + [rect("hazard", 8, 15) for _ in range(rng.integers(1, 4))])
+    hazards = [r for r in regions if r.kind == "hazard"]
+    survivors = []
+    for i in range(int(rng.integers(3, 9))):
+        while True:
+            p = rng.uniform(5, size - 5, 2)
+            if not any(h.xmin <= p[0] <= h.xmax and h.ymin <= p[1] <= h.ymax for h in hazards):
+                break
+        survivors.append(Survivor(i, p, Priority(rng.choice(3, p=[0.4, 0.35, 0.25])),
+                                  ResponseState(rng.integers(3))))
+    return Site(seed, (0.0, 0.0, size, size), regions, tuple(survivors), np.array([3.0, 3.0]))
 
 
 def _wrap(a: float) -> float:
