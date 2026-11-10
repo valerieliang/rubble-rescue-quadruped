@@ -59,7 +59,6 @@ def heatmap(path, out):
     lim = np.nanmax(np.abs(Z))
     fig, ax = plt.subplots(figsize=(3.6, 2.9), constrained_layout=True)
     im = ax.imshow(Z, origin="lower", cmap="RdBu", vmin=-lim, vmax=lim, aspect="auto")
-    ax.contour(Z, levels=[0], colors=INK, linewidths=1.2)
     ax.set_xticks(range(len(sig)), [f"{s:g}" for s in sig])
     ax.set_yticks(range(len(fps)), [f"{f:g}" for f in fps])
     ax.set_xlabel("position noise sigma (m)")
