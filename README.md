@@ -119,6 +119,32 @@ Both methods use the same prior; they differ only in whether the triage class se
 
 The Go2 and toy simulators give near-identical numbers. Hazards are slow but traversable, and robot pose is true pose.
 
+### Case studies: why survivors are lost
+
+Aggregate scores do not show why a survivor is lost. Each panel of Figure 5 is one seeded Go2-sim site under the default prior (black path is prior + priority), chosen to isolate one way the prior can be wrong. The panels illustrate mechanisms and are not a sample; Table 5 gives how often each occurs.
+
+![Figure 5](figures/path_planning/cases_grid.png)
+
+**Figure 5.** Six rollouts. Dashed circles are 2 sigma around each drone detection, colored by reported class; markers are true survivors; black rings were rescued (labelled with the time in s), red rings were not. In E and F the labels are priority/nearest-first times ("-" = not rescued), and E also draws the nearest-first path. A-B: drone misses. C: position error. D: false positives. E-F: priority vs. nearest-first.
+
+- **A, B: the drone misses a survivor (sites 0, 1).** The policy cannot target an unreported survivor, so it is rescued only if the 5 m onboard sensor happens to see it. In A the route to the critical survivor passes within 0.6 m of the missed one, which is rescued at 136 s. In B the three reported survivors are done by 160 s, no viable track remains, and the policy falls back to the lawnmower sweep. The sweep restarts at the waypoint nearest the start, not the robot, so it first crosses the site (about 95 m) and by 600 s has covered two rows and part of a third of eleven. The survivor lies on the sixth, and the robot passed 11.6 m from it at 114 s.
+- **C: a reported position is too far off (site 139).** The drone reports the urgent survivor 4.6 m from its true position. The robot approaches the reported point and each tick without a sighting lowers the track's existence probability `r`, which falls below 0.1 at 88 s while the robot is still 6.3 m away (closest approach 5.5 m, sensor radius 5 m). The track is dropped and the survivor is never rescued, by either ordering; at sigma = 2 m the same site is 3/3.
+- **D: false positives cost time, not rescues (site 48).** Two spurious detections send the planner toward nonexistent survivors early in the run. All four real survivors are still rescued, but the critical one at 314 s instead of 95 s, and the score falls from 0.91 to 0.54.
+- **E, F: priority vs. nearest-first (sites 152, 155).** In E, priority rescues the critical survivor first (52 s) and all four by 235 s (score 0.94). Nearest-first clears two nearby stable survivors first, its track for the critical one falls below 0.1 while the robot is about 7 m away, and it is never rescued (0.50). In F the drone labels one critical survivor stable, so priority reaches it at 172 s instead of 36 s and scores 0.48 against 0.79; with true labels priority scores 0.80. E and F are tails: over the 160 paired sites priority scores higher on 38, lower on 32 and within 0.01 on 90, with a per-site standard deviation of 0.09 around the +0.013 mean, so wins like E and losses like F largely cancel.
+
+**Table 5.** Why survivors are not rescued (prior + priority, 160 sites, 864 survivors, pooled).
+
+| sigma (m)    | 1   | 3   | 6   | 10  | 15  |
+| ------------ | --- | --- | --- | --- | --- |
+| Unrescued    | 54  | 117 | 244 | 385 | 496 |
+| Not reported | 81% | 38% | 18% | 12% | 10% |
+| Dropped      | 11% | 54% | 75% | 81% | 73% |
+| Other        | 7%  | 8%  | 7%  | 7%  | 17% |
+
+*Caption: Not reported = missed by the drone. Dropped = reported, but its track fell below r = 0.1 at some point. Other = reported and never dropped (still active at T, or deleted). Reproduce with `--budget` (see Setup).*
+
+**Takeaway.** The prior controls where the robot goes; the onboard sensor controls what it finds, and a survivor is confirmed only when the robot comes within 5 m. At sigma = 1 m misses (A, B) are 81% of the failures, which is why the rescue rate stops at 0.94 (Table 1). At the default sigma = 3 m dropped tracks (C) are the larger share (54% vs. 38%), and beyond it they dominate, one mechanism behind the loss of the prior's benefit in Q1. Three cheap remedies follow, none implemented or measured yet: (i) resume the sweep from the waypoint nearest the current position, skipping rows already covered; (ii) when no track remains, search the largest unobserved region instead of a fixed pattern; (iii) keep a track until its 2-sigma region has been searched.
+
 ## Layout
 
 ```
@@ -137,6 +163,7 @@ scripts/smoke_test.py   # compare methods over N sites
 scripts/run_sweeps.py   # Q1/Q2 sweeps -> runs/*.csv
 scripts/plot_results.py # figures from runs/*.csv
 scripts/render_site.py  # site and rollout figures
+scripts/render_cases.py # six-panel case-study figure, --stats / --budget
 tests/
 docs/INTERFACES.md
 ```
@@ -149,6 +176,7 @@ python -m pytest
 PYTHONPATH=. python scripts/smoke_test.py 20 --sim go2
 RESCUE_SIM=go2 PYTHONPATH=. python scripts/run_sweeps.py 40   # -> runs/*.csv
 PYTHONPATH=. python scripts/plot_results.py                    # -> runs/figures/
+PYTHONPATH=. python scripts/render_cases.py --stats --budget   # -> figures/path_planning/cases_grid.png
 ```
 
 Requires Python 3.10+, numpy, scipy, matplotlib.
