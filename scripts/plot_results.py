@@ -30,7 +30,7 @@ METRICS = [("norm_score", "Oracle-normalized score", False),
 def sweep_figure(path, xkey, xlabel, out):
     rows = load_csv(path)
     xs = sorted({r[xkey] for r in rows})
-    fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.4), constrained_layout=True)
+    fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.7), constrained_layout=True)
     for ax, (metric, ylabel, _) in zip(axes, METRICS):
         for m, (color, marker, label) in STYLE.items():
             stats = [mean_ci([r[metric] for r in rows if r["method"] == m and r[xkey] == x]) for x in xs]
@@ -42,7 +42,9 @@ def sweep_figure(path, xkey, xlabel, out):
         ax.set_ylabel(ylabel)
         if xkey == "sigma_pos":
             ax.set_xscale("log")
-    axes[0].legend(frameon=False, fontsize=7, loc="lower left")
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, frameon=False, fontsize=8, ncol=len(handles),
+               loc="outside lower center")
     fig.savefig(out)
     plt.close(fig)
 
