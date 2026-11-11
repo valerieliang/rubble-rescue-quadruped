@@ -1,7 +1,7 @@
-"""Draw a seeded site and, optionally, one run's trajectory. Saves PNGs to figures/.
+"""Draw a seeded site and, optionally, one run's trajectory. Saves PNGs to figures/path_planning/.
 
 Usage: python scripts/render_site.py SEED [SEED ...] [--method {coverage,nearest,priority}]
-                                     [--sim {toy,go2}] [--out figures]
+                                     [--sim {toy,go2}] [--out figures/path_planning]
 
 Without --method it draws the site and drone detections only. Each seed is used for both the
 site and the episode, as in rescue/experiments.py, so the detections shown are the ones the run saw.
@@ -96,7 +96,7 @@ def legend_handles(sigma, with_run):
     return handles
 
 
-def render(seed, cfg, method=None, sim_name="go2", out="figures"):
+def render(seed, cfg, method=None, sim_name="go2", out="figures/path_planning"):
     simulator = SIMS[sim_name]
     site = simulator.generate_site(seed)
     # run_episode draws the detections first from default_rng(seed), so this matches the run.
@@ -130,8 +130,9 @@ def render(seed, cfg, method=None, sim_name="go2", out="figures"):
         title = (f"Site {seed}, {SIM_LABELS[sim_name]}, {METHOD_LABELS[method]}: "
                  f"{len(log.rescue_times)} of {len(site.survivors)} rescued by {T:.0f} s")
     ax.set_title(title, fontsize=10, color=INK, loc="left")
-    ax.legend(handles=legend_handles(cfg.sigma_pos, bool(log)), loc="center left",
-              bbox_to_anchor=(1.02, 0.5), frameon=False, fontsize=8, labelcolor=INK)
+    ax.legend(handles=legend_handles(cfg.sigma_pos, bool(log)), loc="upper center",
+              bbox_to_anchor=(0.5, -0.13), ncol=3, frameon=False, fontsize=8, labelcolor=INK,
+              columnspacing=1.6, handletextpad=0.5)
 
     os.makedirs(out, exist_ok=True)
     name = f"site_{seed:03d}_{sim_name}_{method}.png" if method else f"site_{seed:03d}.png"
@@ -146,7 +147,7 @@ def main():
     parser.add_argument("seeds", nargs="+", type=int)
     parser.add_argument("--method", choices=tuple(METHODS))
     parser.add_argument("--sim", choices=tuple(SIMS), default="go2")
-    parser.add_argument("--out", default="figures")
+    parser.add_argument("--out", default="figures/path_planning")
     args = parser.parse_args()
     for seed in args.seeds:
         print(render(seed, PriorConfig(), args.method, args.sim, args.out))
