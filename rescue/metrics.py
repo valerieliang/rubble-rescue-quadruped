@@ -8,7 +8,8 @@ import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import dijkstra
 
-from .interfaces import PRIORITY_DECAY, PRIORITY_WEIGHT, STANDOFF_RADIUS, Priority, RunLog, Site
+from .interfaces import (PRIORITY_DECAY, PRIORITY_WEIGHT, STANDOFF_RADIUS, SURVIVOR_KEEPOUT, Priority,
+                         RunLog, Site)
 from .terrain import BASE_SPEED, REGION_SPEED, travel_time
 
 
@@ -108,8 +109,33 @@ def rescue_rate(site: Site, log: RunLog, T: float) -> float:
     return sum(log.rescue_times.get(s.id, np.inf) <= T for s in site.survivors) / len(site.survivors)
 
 
+def safety_violations(site: Site, log: RunLog, keepout: float = SURVIVOR_KEEPOUT) -> dict:
+    """Safety violations along the logged trajectory (one sample per policy step, 1 Hz).
+
+    A sample violates safety if the robot is inside a hazard region or within ``keepout`` metres
+    of any survivor's true position (rescued or not). Crossings between samples are not seen, so
+    counts are a lower bound. Returns per-kind sample counts, the number of violating samples,
+    and that number as a fraction of all samples.
+    """
+    traj = np.asarray(log.trajectory, float).reshape(-1, 3)
+    pts = traj[:, 1:]
+    hazard = np.zeros(len(pts), bool)
+    for r in site.regions:
+        if r.kind == "hazard":
+            hazard |= ((pts[:, 0] >= r.xmin) & (pts[:, 0] <= r.xmax)
+                       & (pts[:, 1] >= r.ymin) & (pts[:, 1] <= r.ymax))
+    near = np.zeros(len(pts), bool)
+    for s in site.survivors:
+        near |= np.linalg.norm(pts - s.pos, axis=1) < keepout
+    bad = hazard | near
+    return {"hazard_steps": int(hazard.sum()), "survivor_steps": int(near.sum()),
+            "violation_steps": int(bad.sum()),
+            "violation_rate": float(bad.mean()) if len(bad) else 0.0}
+
+
 def summarize(site: Site, log: RunLog, T: float, oracle: float | None = None) -> dict:
     oracle = oracle_score(site, T) if oracle is None else oracle
     score = rescue_score(site, log, T)
     return {"score": score, "oracle": oracle, "norm_score": score / oracle if oracle else float("nan"),
-            "time_to_critical": time_to_critical(site, log, T), "rescue_rate": rescue_rate(site, log, T)}
+            "time_to_critical": time_to_critical(site, log, T), "rescue_rate": rescue_rate(site, log, T),
+            **safety_violations(site, log)}

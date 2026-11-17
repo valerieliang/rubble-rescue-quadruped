@@ -30,6 +30,7 @@ class ResponseState(IntEnum):
 # Weights and decay rates are modelling choices, not calibrated to real triage outcomes.
 PRIORITY_WEIGHT = {Priority.STABLE: 1.0, Priority.URGENT: 2.0, Priority.CRITICAL: 4.0}
 STANDOFF_RADIUS = 1.5   # m; a survivor counts as rescued once the robot is this close
+SURVIVOR_KEEPOUT = 1.0  # m; the robot must stay at least this far from a survivor (below STANDOFF_RADIUS)
 PRIORITY_DECAY = {Priority.STABLE: 0.002, Priority.URGENT: 0.005, Priority.CRITICAL: 0.01}  # 1/s
 
 
