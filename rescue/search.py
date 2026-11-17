@@ -48,6 +48,11 @@ class PriorSearch:
         self.travel_time, self.horizon, self.mode, self.r_min = travel_time, horizon, mode, r_min
         self.dist_exp = dist_exp   # exponent on (tau+1) in the priority score; 1 = reward per second
 
+    def clearance_regions(self, confidence: float = 0.95, keepout: float | None = None):
+        """Keep-out regions for the current belief, passed to the approach planner / safety filter.
+        Uses the search layer's own existence threshold so both layers see the same tracks."""
+        return self.belief.clearance_regions(confidence, keepout, self.r_min)
+
     def act(self, obs: Observation) -> np.ndarray:
         pos = np.asarray(obs.robot_pos, float)
         for p in obs.rescued:
