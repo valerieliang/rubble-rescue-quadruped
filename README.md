@@ -39,7 +39,16 @@ Implemented (Q1-Q2):
 - Simulators: point-robot reference (`toy_sim.py`) and reduced-order Go2 (`sim.py`), with a parallel batch runner
 - Q1 sweep (prior noise, false-positive rate), Q2 comparison with a class-accuracy sweep, and plots
 
-Not yet implemented: MPC approach planner, CBF safety filter, state inference, legibility (Q3-Q5).
+Q3-Q5 components (standalone: tested in closed loop on a local unicycle integrator, not yet wired into the simulator; no frozen results):
+
+- Clearance regions: confidence-ellipse keep-out region per belief track, with barrier `h(x)` and gradient (`rescue/clearance.py`, `PriorSearch.clearance_regions()`)
+- Approach planner: sampling-based MPC (MPPI) at 10 Hz on the unicycle model with a standoff pose as goal, terrain speed caps, soft barrier costs and a one-detour router around hazards and other survivors' regions (`rescue/mpc.py`)
+- Safety filter: CBF-QP over hazard rectangles and clearance discs, closed-form because the constraints are linear in forward speed only (`rescue/cbf.py`)
+- Legibility: observer-model term in the MPC cost, weighted by the target's inferred mobility (`rescue/mpc.py`, `rescue/observer.py`); Q5 rollouts in `scripts/run_q5.py`
+- Behaviour inference: Bayes filter over still / approaching / retreating and the induced response-state belief, with a surprise statistic for out-of-model motion (`rescue/behavior.py`); offline evaluation and baseline 4 in `scripts/run_q4.py`, on a stand-in track generator
+- Safety-violation metric: trajectory steps inside a hazard region or within 1 m of a survivor (`metrics.safety_violations`, in the run CSVs); Q3 baseline 3 (no filter) in `scripts/run_q3.py`
+
+Not yet done (needs the simulator): a controller hook in `sim.run_episode` so the MPC and filter drive the Go2 model, survivor motion for each behaviour mode, the filtered Q3 runs, Q4 on simulated motion with ablations over survivor count and fraction mobile, and Q5 with the observer watching simulator rollouts.
 
 ## Results
 
