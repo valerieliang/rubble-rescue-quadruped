@@ -26,7 +26,8 @@ METHODS = {"coverage": baselines.coverage_policy,
            "nearest": baselines.nearest_first_policy,
            "priority": baselines.priority_policy}
 FIELDS = ["seed", "method", "sigma_pos", "n_false_pos", "p_miss", "p_class_correct",
-          "score", "oracle", "norm_score", "time_to_critical", "rescue_rate"]
+          "score", "oracle", "norm_score", "time_to_critical", "rescue_rate",
+          "hazard_steps", "survivor_steps", "violation_steps", "violation_rate"]
 
 
 @lru_cache(maxsize=None)

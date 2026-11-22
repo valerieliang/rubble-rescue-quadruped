@@ -95,5 +95,12 @@ class Belief:
         miss = 1.0 - self.p_detect * disc_mass(t.mean, t.sigma, center, radius)
         t.r = t.r * miss / (t.r * miss + (1.0 - t.r))
 
+    def clearance_regions(self, confidence: float = 0.95, keepout: float | None = None,
+                          r_min: float = 0.1):
+        """Confidence-ellipse keep-out region per track, for the safety filter (see clearance.py)."""
+        from .clearance import clearance_regions
+        kw = {} if keepout is None else {"keepout": keepout}
+        return clearance_regions(self.tracks, confidence, r_min=r_min, **kw)
+
     def expected_survivors(self) -> float:
         return sum(t.r for t in self.tracks)
