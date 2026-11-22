@@ -50,5 +50,20 @@ A track's region is far larger than the rescue standoff radius (1.5 m) at realis
 
 The filter returns the nearest safe command: forward speed is clipped by `a v >= -alpha h` for each barrier, the turn rate is untouched (barriers depend on position only), and at a boundary it turns along the tangent toward the goal. The guarantee is for the commanded velocity and the estimated pose; it does not model the Go2's acceleration limit beyond a 0.3 m braking margin or localization error.
 
-To wire into `sim.run_episode`: build one controller per episode, call `command` at every `sim_dt` step in place of `track_waypoint`, and pass `speed_fn` as the vectorized form of `terrain.speed_at`.
+The controller is wired into a simulator by `rescue/ctrl_sim.py` (see the last section): `stack.RescueStack` builds one controller per episode with `StackConfig(controller="components")`, calls `command` every 0.1 s step, and passes `speed_fn` as the vectorized form of `terrain.speed_at`. `sim.run_episode` (Q1-Q2) is unchanged.
 
+
+## Control-rate simulator (`rescue/ctrl_sim.py`, closed-loop Q3-Q5)
+
+Same plant as `sim.py`; the Q1-Q2 simulator is unchanged. `StackConfig.controller` selects the controller: `"closed_loop"` (`ctrl_mpc.py` + `safety.py`, default) or `"components"` (`mpc.ApproachController` + `cbf.SafetyFilter`).
+
+| Item | Value |
+|---|---|
+| Control loop | MPC + CBF-QP at 10 Hz output `(v, omega)`, the Go2 velocity interface; search runs at 1 Hz |
+| Sensor | disc of radius 10 m, detection probability 0.9, noise `sigma_meas` (default 0.5 m) |
+| Rescue | robot within 3.5 m (`stack.R_RESCUE`) of the true survivor position |
+| Violation | robot centre within 1 m (`SURVIVOR_KEEPOUT`) of any survivor (rescued ones included), or inside a hazard rectangle |
+| Survivors | hidden state z; only MOBILE move (approaching / retreating / erratic, 0.3 m/s); rescued survivors stop |
+| Prompts | up to 3 per survivor within 6 m; response in {answer, wave, nothing} with reliability q |
+| Reward (Q4-Q5) | class weight x `STATE_FACTOR[z]` (unresponsive 1.5, trapped 1.0, mobile 0.4), oracle-normalized (`metrics.rescue_score(..., state_weighted=True)`) |
+| Log | `CtrlLog`: rescue times, violation counts, minimum clearance, per-survivor state posterior trace |

@@ -2,7 +2,7 @@
 
 Drone-informed, priority-aware search and rescue with a quadruped robot. Course project for Human-Centered Robotics (Valerie Liang, Sahil Patel).
 
-After a collapse, a simulated quadrotor surveys the site and hands a Unitree Go2 a list of likely survivor locations, each with position uncertainty and a triage priority (critical, urgent, stable). The quadruped must decide whom to reach first, how to approach safely, and (later) how to infer each survivor's state when they cannot answer.
+After a collapse, a simulated quadrotor surveys the site and hands a Unitree Go2 a list of likely survivor locations, each with position uncertainty and a triage priority (critical, urgent, stable). The quadruped must decide whom to reach first, how to approach safely, and how to infer each survivor's state when they cannot answer.
 
 ## Approach
 
@@ -39,7 +39,7 @@ Implemented (Q1-Q2):
 - Simulators: point-robot reference (`toy_sim.py`) and reduced-order Go2 (`sim.py`), with a parallel batch runner
 - Q1 sweep (prior noise, false-positive rate), Q2 comparison with a class-accuracy sweep, and plots
 
-Q3-Q5 components (standalone: tested in closed loop on a local unicycle integrator, not yet wired into the simulator; no frozen results):
+Q3-Q5 standalone components (unit-tested and evaluated on their own: a local unicycle integrator, synthetic tracks; the closed-loop Q3-Q5 below uses them through `StackConfig(controller="components")`):
 
 - Clearance regions: confidence-ellipse keep-out region per belief track, with barrier `h(x)` and gradient (`rescue/clearance.py`, `PriorSearch.clearance_regions()`)
 - Approach planner: sampling-based MPC (MPPI) at 10 Hz on the unicycle model with a standoff pose as goal, terrain speed caps, soft barrier costs and a one-detour router around hazards and other survivors' regions (`rescue/mpc.py`)
@@ -48,7 +48,13 @@ Q3-Q5 components (standalone: tested in closed loop on a local unicycle integrat
 - Behaviour inference: Bayes filter over still / approaching / retreating and the induced response-state belief, with a surprise statistic for out-of-model motion (`rescue/behavior.py`); offline evaluation and baseline 4 in `scripts/run_q4.py`, on a stand-in track generator
 - Safety-violation metric: trajectory steps inside a hazard region or within 1 m of a survivor (`metrics.safety_violations`, in the run CSVs); Q3 baseline 3 (no filter) in `scripts/run_q3.py`
 
-Not yet done (needs the simulator): a controller hook in `sim.run_episode` so the MPC and filter drive the Go2 model, survivor motion for each behaviour mode, the filtered Q3 runs, Q4 on simulated motion with ablations over survivor count and fraction mobile, and Q5 with the observer watching simulator rollouts.
+Closed-loop Q3-Q5 (control-rate simulator, `ctrl_sim.py`; the Q1-Q2 `sim.py` is unchanged):
+
+- `ctrl_sim.py`: 10 Hz MPC + CBF on the Go2 plant, moving survivors (still / approaching / retreating / erratic), prompts and responses, violation logging
+- `stack.py`: the three layers assembled, with variants for baselines 3 (no filter), 4 (no state inference) and 5 (communication oracle)
+- `ctrl_mpc.py`, `safety.py`: receding-horizon MPC with a terrain path planner, and a CBF-QP with ellipse and hazard barriers padded by a measured tracking error
+- `ctrl_behavior.py`: survivor simulation and online state inference; `legibility.py`, `approach.py`: legibility term, simulated observers and the Q5 approach scenarios
+- `ctrl_experiments.py` and `scripts/ctrl_run_q3.py`, `ctrl_run_q4.py`, `ctrl_run_q5.py`, `ctrl_plot.py`
 
 ## Results
 
@@ -154,6 +160,61 @@ Aggregate scores do not show why a survivor is lost. Each panel of Figure 5 is o
 
 **Takeaway.** The prior controls where the robot goes; the onboard sensor controls what it finds, and a survivor is confirmed only when the robot comes within 5 m. At sigma = 1 m misses (A, B) are 81% of the failures, which is why the rescue rate stops at 0.94 (Table 1). At the default sigma = 3 m dropped tracks (C) are the larger share (54% vs. 38%), and beyond it they dominate, one mechanism behind the loss of the prior's benefit in Q1. Three cheap remedies follow, none implemented or measured yet: (i) resume the sweep from the waypoint nearest the current position, skipping rows already covered; (ii) when no track remains, search the largest unobserved region instead of a fixed pattern; (iii) keep a track until its 2-sigma region has been searched.
 
+## Closed-loop results: Q3-Q5
+
+Control-rate Go2 sim, T = 600 s, 40 sites per config (100 scenarios for Q5). Figures are committed in [`figures/closed_loop/`](figures/closed_loop/); `scripts/ctrl_plot.py` regenerates them (and these tables) into `runs/figures/` from `runs/*.csv`. Differences from the Q1-Q2 simulator: sensor radius 10 m (an onboard person detector), rescue radius 3.5 m (the robot confirms from a standoff outside the 1 m clearance), and survivors can move. Q3-Q4 scores are therefore not comparable with the Q1-Q2 tables. The survivor behavior, the state-dependent reward weights (unresponsive 1.5, trapped 1.0, mobile 0.4) and the prompt-response model are modelling choices, not calibrated to people.
+
+**Q3: safety under uncertainty.** A clearance violation is the robot centre within 1 m of any survivor (including ones already reached). Localization uncertainty is the robot's onboard measurement noise sigma_meas; the safety region is the 90% confidence ellipse of the belief.
+
+| sigma_meas (m)                     | 0.25 | 0.5  | 1.0  | 1.5  | 2.0  |
+| ---------------------------------- | ---- | ---- | ---- | ---- | ---- |
+| Episodes with violation, full      | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+| Episodes with violation, no filter | 0.57 | 0.50 | 0.38 | 0.38 | 0.33 |
+| Score, full                        | 0.77 | 0.74 | 0.61 | 0.56 | 0.53 |
+| Score, no filter                   | 0.79 | 0.79 | 0.64 | 0.62 | 0.57 |
+| Rescue rate, full                  | 0.91 | 0.89 | 0.83 | 0.75 | 0.69 |
+| Rescue rate, no filter             | 0.94 | 0.93 | 0.86 | 0.84 | 0.73 |
+
+![Q3: violations, score and rescue rate vs. localization noise](figures/closed_loop/q3_uncertainty.png)
+
+**Answer.** The filter removed every clearance violation in every condition. The price is 2 to 6 points of normalized score, and the loss from uncertainty itself (0.77 to 0.53) is larger than the loss from the filter. A hazard-blind planner (stress test) entered hazards in 50% of unfiltered episodes and 0% of filtered ones, at 4 points of score. With the hazard-aware planner neither variant entered a hazard, so the hazard barrier only matters when the planner fails. Raising the confidence level from 0.5 to 0.99 lowers the score from 0.78 to 0.51. The filter needs active uncertainty reduction: when the safety region is as large as the sensing range, the robot circles the region until it sees the survivor.
+
+**Q4: survivor state.** At the default config the full system infers the state with 88% accuracy (oracle 98%) and settles on the right state about 3.2 s after the first sighting. It does not improve the rescue score: 0.745 with inference, 0.743 without, 0.743 with the oracle. At default settings the state-based weights rarely change the visiting order, so we do not claim a benefit from inference on this metric. Accuracy falls as survivors move out of model: 0.84 with no erratic survivors, 0.69 with half of the mobile survivors erratic, 0.54 with all of them, and only 35-40% on the erratic survivors themselves. Ablation curves (prior noise, false positives, survivor count, fraction mobile, prompt reliability, erratic fraction) are below.
+
+![Q4 ablations](figures/closed_loop/q4_ablations.png)
+
+**Q5: legibility.** On open ground with one distractor on the same side, weight lambda = 300 on a mobile survivor:
+
+| | no legibility | lambda = 300 |
+| --- | --- | --- |
+| Approach time (s) | 19.5 | 25.9 (+33%) |
+| Time for the cost-model observer to identify the goal (s) | 13.6 | 7.5 |
+| Mean P(true goal), cost-model observer | 0.77 | 0.91 |
+| Mean P(true goal), heading observer | 0.78 | 0.81 |
+
+**Answer.** Yes for the cost-model observer, at about a third more approach time. The cost-model observer is the same family as the planner's legibility term, so that result is partly by construction; the heading observer, which does not share it, barely improves. ![Q5: legibility weight vs. approach time and observer belief](figures/closed_loop/q5_legibility.png)
+
+Weighting by inferred state removes the cost for unresponsive survivors (19.5 s, no change) and lowers it for trapped ones, whereas a state-blind planner pays the full cost for everyone.
+
+**Which implementation drives the closed loop.** The standalone components (`mpc.py` MPPI planner, `cbf.py` filter, `clearance.py`, `observer.py`, `behavior.py`) and the closed-loop modules (`ctrl_mpc.py`, `safety.py`, `stack.py`, `ctrl_sim.py`, `ctrl_behavior.py`) were compared by running both controllers in the same control-rate simulation (`StackConfig(controller="closed_loop" | "components")`), 30 sites, same search layer, sensors and survivors:
+
+| sigma_meas (m) | controller | filter | score | rescue rate | episodes with clearance violation |
+| --- | --- | --- | --- | --- | --- |
+| 0.5 | closed-loop (`ctrl_mpc` + `safety`) | on | 0.72 | 0.88 | 0.00 |
+| 0.5 | components (`mpc` + `cbf`) | on | 0.58 | 0.78 | 0.00 |
+| 0.5 | closed-loop | off | 0.78 | 0.94 | 0.50 |
+| 0.5 | components | off | 0.66 | 0.90 | 0.60 |
+| 1.5 | closed-loop | on | 0.57 | 0.75 | 0.00 |
+| 1.5 | components | on | 0.50 | 0.74 | 0.00 |
+| 1.5 | closed-loop | off | 0.62 | 0.85 | 0.40 |
+| 1.5 | components | off | 0.63 | 0.87 | 0.67 |
+
+Both filters eliminate clearance violations; the closed-loop controller reaches survivors faster, so it is the default for the reported Q3-Q5 numbers. The standalone components are kept: the Bayes mode filter, terrain-aware observer and clearance regions are tested on their own (`tests/test_*`), and their controller can be switched in with `controller="components"`. It was not retuned for this simulator (its standoff is 1.2 m and it was written against a 1.5 m rescue radius), so the gap is partly tuning.
+
+## Limitations
+
+Survivors are a crude stand-in for people: three states, constant-speed motion, and a fixed response model. Locomotion is a reduced-order unicycle with a measured tracking-error pad, not a full-body Go2 with a learned policy, and the drone detector is parametric noise, not image-derived. The oracle for Q3-Q4 uses survivors' initial positions.
+
 ## Layout
 
 ```
@@ -168,11 +229,16 @@ rescue/
   toy_sim.py       # point-robot reference simulator + seeded site generator
   sim.py           # reduced-order Go2 simulator (used for reported results)
   experiments.py   # parallel seeded job runner, CSV, paired statistics
+  clearance.py, mpc.py, cbf.py, behavior.py, observer.py   # standalone Q3-Q5 components
+  ctrl_sim.py, stack.py, ctrl_mpc.py, safety.py, ctrl_behavior.py, legibility.py,
+  approach.py, ctrl_experiments.py                          # closed-loop Q3-Q5
 scripts/smoke_test.py   # compare methods over N sites
 scripts/run_sweeps.py   # Q1/Q2 sweeps -> runs/*.csv
 scripts/plot_results.py # figures from runs/*.csv
 scripts/render_site.py  # site and rollout figures
 scripts/render_cases.py # six-panel case-study figure, --stats / --budget
+scripts/run_q3.py, run_q4.py, run_q5.py   # standalone component evaluations
+scripts/ctrl_run_q3.py, ctrl_run_q4.py, ctrl_run_q5.py, ctrl_plot.py   # closed-loop Q3-Q5
 tests/
 docs/INTERFACES.md
 ```
@@ -186,6 +252,10 @@ PYTHONPATH=. python scripts/smoke_test.py 20 --sim go2
 RESCUE_SIM=go2 PYTHONPATH=. python scripts/run_sweeps.py 40   # -> runs/*.csv
 PYTHONPATH=. python scripts/plot_results.py                    # -> runs/figures/
 PYTHONPATH=. python scripts/render_cases.py --stats --budget   # -> figures/path_planning/cases_grid.png
+PYTHONPATH=. python scripts/ctrl_run_q3.py 40 8    # closed-loop Q3 -> runs/q3_*.csv (last arg: workers; keep ~8 on Windows)
+PYTHONPATH=. python scripts/ctrl_run_q4.py 40 8    # Q4 -> runs/q4_*.csv
+PYTHONPATH=. python scripts/ctrl_run_q5.py 100 8   # Q5 -> runs/q5.csv
+PYTHONPATH=. python scripts/ctrl_plot.py           # -> runs/figures/ and markdown tables
 ```
 
 Requires Python 3.10+, numpy, scipy, matplotlib.
