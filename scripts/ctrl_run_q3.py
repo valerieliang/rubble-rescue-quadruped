@@ -23,6 +23,8 @@ def main():
     studies = {
         "q3_sigma": dict(variants=both, grid={"sigma_meas": [0.25, 0.5, 1.0, 1.5, 2.0]}),
         "q3_confp": dict(variants=["full"], grid={"conf_p": [0.5, 0.8, 0.9, 0.95, 0.99]}),
+        # confidence level x localization noise: the smallest region that still gives zero violations
+        "q3_conf_sweep": dict(variants=both, grid={"sigma_meas": [0.5, 1.0, 2.0], "conf_p": [0.5, 0.7, 0.8, 0.9]}),
         "q3_naive": dict(variants=both, grid={"hazard_aware_planner": [False]}),
     }
     for name, s in studies.items():
