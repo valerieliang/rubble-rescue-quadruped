@@ -42,7 +42,7 @@ class StackConfig:
     legibility_heading: float = 0.0  # weight of the heading-legibility term (motion direction points at the goal)
     obs_beta: float = 0.7            # observer temperature assumed by the legibility term
     # safety
-    conf_p: float = 0.9
+    conf_p: float = 0.7              # region confidence; 0.7 chosen from the Q3 sweep (0.9 costs 1-5 points, same safety)
     d_clear: float = 1.0
     eps_track: float = 0.25
     cp_offset: float = 0.25
