@@ -55,8 +55,12 @@ def run_episode_ctrl(site: Site, prior_cfg: PriorConfig, stack_cfg: StackConfig,
                      rescue_radius: float = R_RESCUE, dwell: dict | None = None, plant=None) -> CtrlLog:
     """``plant`` (default None = the unicycle) can be a ``mj_plant.Go2MujocoPlant``: the commanded
     (v, omega) is then tracked by the learned Go2 policy in MuJoCo, the pose comes back from it, and the
-    episode ends (``log.fell_at``) if the robot falls. Terrain stays a speed cap in the stack."""
+    episode ends (``log.fell_at``) if the robot falls. Terrain stays a speed cap in the stack. With a plant
+    and no ``params``, the stack plans and filters with the plant's turn-rate limit (``plant.w_max``)."""
     p = params or Go2Params()
+    if plant is not None and params is None:
+        # plan and filter with the turn rate the plant can actually follow (the policy's +-1 rad/s range)
+        p = Go2Params(max_turn_rate=min(p.max_turn_rate, plant.w_max))
     beh = behavior or BehaviorConfig()
     rng = np.random.default_rng(seed)
     brng = np.random.default_rng(seed + 1_000_003)

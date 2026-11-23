@@ -37,6 +37,10 @@ class Belief:
         self.cfg = cfg
         self.p_detect = p_detect       # robot sensor detection probability inside footprint
         self.sigma_meas = sigma_meas   # robot sensor position noise (m)
+        # False (default, as in the Q1 experiments): a confirmed track keeps r = 1 forever. True: missed
+        # detections also lower a confirmed track's existence, so a survivor who walked away (or a stale
+        # duplicate track) stops being a target instead of holding the robot at an empty standoff.
+        self.forget_confirmed = False
         # Initial existence: share of detections expected to be real.
         n = max(len(detections), 1)
         r0 = float(np.clip(1.0 - cfg.n_false_pos / n, 0.05, 0.99))
@@ -91,11 +95,12 @@ class Belief:
         t.r, t.confirmed, t.priority = 1.0, True, d.priority
 
     def _negative_update(self, t: Track, center: np.ndarray, radius: float) -> None:
-        if t.confirmed:
+        if t.confirmed and not self.forget_confirmed:
             return
         # P(no detection | exists) = 1 - p_detect * mass in footprint; P(no det | not exists) = 1.
         miss = 1.0 - self.p_detect * disc_mass(t.mean, t.sigma, center, radius)
-        t.r = t.r * miss / (t.r * miss + (1.0 - t.r))
+        r = min(t.r, 0.99) if t.confirmed else t.r     # r = 1 would never move; a re-detection resets it to 1
+        t.r = r * miss / (r * miss + (1.0 - r))
 
     def clearance_regions(self, confidence: float = 0.95, keepout: float | None = None,
                           r_min: float = 0.1):
