@@ -45,3 +45,19 @@ def test_detection_confirms_and_tightens():
     t = b.tracks[0]
     assert t.confirmed and t.r == 1.0 and t.sigma < 3.0 and t.priority == Priority.CRITICAL
     assert t.mean[0] > 11.5
+
+
+def test_confirmed_track_fades_when_nobody_is_there_only_with_forget_confirmed():
+    """Sites 16 and 18 (sigma_meas 1 m): the robot waited 500+ s at the standoff of a confirmed track whose
+    survivor had walked away, because missed detections never lowered a confirmed track's existence."""
+    from rescue.belief import Track
+    for forget, expect_gone in ((False, False), (True, True)):
+        b = Belief([], PriorConfig())
+        b.forget_confirmed = forget
+        b.tracks = [Track(np.array([3.0, 0.0]), 0.5, 1.0, Priority.URGENT, confirmed=True)]
+        for _ in range(5):                                   # 5 s next to it, nothing detected
+            b.update(np.zeros(2), 10.0, [])
+        assert (b.tracks[0].r < 0.1) == expect_gone
+    # a re-detection restores it
+    b.update(np.zeros(2), 10.0, [Detection(np.array([3.1, 0.0]), Priority.URGENT, 0)])
+    assert b.tracks[0].r == 1.0

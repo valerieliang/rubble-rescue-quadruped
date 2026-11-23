@@ -37,6 +37,11 @@ class StackConfig:
     oracle_global: bool = False      # diagnostic upper bound: z of every drone track revealed at t=0
     controller: str = "closed_loop"  # "closed_loop": ctrl_mpc + safety.py;  "components": mpc.ApproachController + cbf.SafetyFilter
     hazard_aware_planner: bool = True   # False: planner/MPC ignore hazards (stress test for the filter)
+    route_around_regions: bool = True   # route around survivors' keep-out regions (False: the pre-fix router,
+                                        # whose route could stall the MPC at a region's edge; site 6 on the Go2)
+    forget_stale_tracks: bool = True    # missed detections lower a confirmed track's existence too (False: the
+                                        # old belief, where the robot could wait for good at the standoff of a
+                                        # survivor who had walked away; sites 16 and 18 at sigma_meas 1 m)
     reward: str = "base"             # key of interfaces.REWARDS: how the hidden state enters the reward
     legibility: float = 0.0          # lambda; 0 = predictable (no legibility term)
     legibility_heading: float = 0.0  # weight of the heading-legibility term (motion direction points at the goal)
@@ -117,6 +122,7 @@ class RescueStack:
         self.search = StateAwareSearch(detections, prior_cfg, site.bounds, partial(travel_time, site),
                                        sensor_radius, site.start, T, weight_fn=self._state_weight, dwell_fn=self._expected_dwell)
         self.search.belief.sigma_meas = sigma_meas
+        self.search.belief.forget_confirmed = cfg.forget_stale_tracks
         self.states: dict[int, StateBelief] = {}
         for tr, d in zip(self.search.belief.tracks, detections):
             if d.state_hint is not None and (cfg.infer_state or cfg.comm_oracle):
@@ -280,7 +286,8 @@ class RescueStack:
         target, wp = self.search.select(obs, self.cfg.sigma_floor, sigmas)
         # Finish the survivor being handled: leaving mid-dwell would waste the time already spent there.
         if (prev is not None and target is not prev and any(t is prev for t in self.search.belief.tracks)
-                and prev.confirmed and np.linalg.norm(pos - prev.mean) <= R_RESCUE + 0.5):
+                and prev.confirmed and np.linalg.norm(pos - prev.mean) <= R_RESCUE + 0.5
+                and prev.r >= self.search.r_min):   # not once the survivor is gone (forget_stale_tracks)
             target, wp = prev, prev.mean
         key = id(target) if target is not None else None
         if key != self.target_key:
@@ -295,7 +302,18 @@ class RescueStack:
         elif np.linalg.norm(pos - self.goal(pos)) < 1.5:
             self.orbit += 0.35
         goal = self.goal(pos)
-        self.path = self.grid.path(pos, goal) if self.cfg.hazard_aware_planner else np.array([pos, goal])
+        if self.cfg.hazard_aware_planner:
+            self.path = self.grid.path(pos, goal, self._path_discs())
+        else:
+            self.path = np.array([pos, goal])
+
+    def _path_discs(self):
+        """The keep-out discs the MPC sees (other survivors' regions, rescued survivors), for the route."""
+        if not (self.cfg.use_cbf and self.cfg.route_around_regions):
+            return []
+        tracks = [tr for tr in self.search.belief.tracks if tr.r >= self.cfg.r_safe and tr is not self.target]
+        return ([(tr.mean, self.boundary(tr)) for tr in tracks]
+                + [(q, self.cbf.region_radius(self.cfg.sigma_floor)) for q in self.keepout])
 
     def _averaged(self, obs: Observation):
         """Cluster the last second's raw detections; one mean detection per cluster with std sigma_meas/sqrt(n)."""

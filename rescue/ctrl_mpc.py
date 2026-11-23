@@ -60,18 +60,35 @@ class TerrainGrid:
             rows.append(idx[xs, ys].ravel())
             cols.append(idx[xe, ye].ravel())
             w.append((np.hypot(dx, dy) * cell * 0.5 * (inv[xs, ys] + inv[xe, ye])).ravel())
-        self.graph = coo_matrix((np.concatenate(w), (np.concatenate(rows), np.concatenate(cols))),
-                                shape=(self.nx * self.ny,) * 2).tocsr()
+        self._rows, self._cols, self._w = np.concatenate(rows), np.concatenate(cols), np.concatenate(w)
+        self.graph = coo_matrix((self._w, (self._rows, self._cols)), shape=(self.nx * self.ny,) * 2).tocsr()
 
     def node(self, p) -> int:
         i = int(np.clip(round((p[0] - self.xmin) / self.cell), 0, self.nx - 1))
         j = int(np.clip(round((p[1] - self.ymin) / self.cell), 0, self.ny - 1))
         return i * self.ny + j
 
-    def path(self, start, goal) -> np.ndarray:
-        """Polyline from start to goal (cell centres, endpoints replaced by the exact points)."""
+    def path(self, start, goal, discs=(), disc_pad: float = 0.3, disc_cost: float = 200.0) -> np.ndarray:
+        """Polyline from start to goal (cell centres, endpoints replaced by the exact points).
+
+        ``discs``: [(centre, radius)] keep-out regions (other survivors' safety regions, rescued survivors).
+        Cells within radius + disc_pad + half a cell diagonal of a centre get a large extra cost, so the
+        path goes around the region instead of through it. Without this the route runs through a region
+        the MPC only treats as a soft cost, and the short-horizon MPC can stall at the region's edge with
+        its waypoint on the far side (site 6 on the MuJoCo Go2). The cost is finite, so a robot that starts
+        inside a padded region still gets the cheapest way out.
+        """
         g, s = self.node(goal), self.node(start)
-        _, pred = dijkstra(self.graph, directed=False, indices=g, return_predecessors=True)
+        graph = self.graph
+        if len(discs):
+            pad = disc_pad + self.cell / np.sqrt(2.0)
+            blocked = np.zeros(self.centers.shape[:2], bool)
+            for c, R in discs:
+                blocked |= np.hypot(self.centers[..., 0] - c[0], self.centers[..., 1] - c[1]) < R + pad
+            blocked = blocked.ravel()
+            w = self._w + disc_cost * (blocked[self._rows] | blocked[self._cols])
+            graph = coo_matrix((w, (self._rows, self._cols)), shape=self.graph.shape).tocsr()
+        _, pred = dijkstra(graph, directed=False, indices=g, return_predecessors=True)
         nodes = [s]
         while nodes[-1] != g and pred[nodes[-1]] >= 0 and len(nodes) < self.nx * self.ny:
             nodes.append(int(pred[nodes[-1]]))

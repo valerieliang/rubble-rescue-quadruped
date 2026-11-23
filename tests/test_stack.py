@@ -34,6 +34,47 @@ def test_terrain_grid_path_avoids_hazard():
     assert np.allclose(lookahead(path, a, 4.0), path[np.argmax(np.linalg.norm(path - a, axis=1) >= 4.0)])
 
 
+def test_route_goes_around_a_rescued_survivor_and_the_robot_gets_past_it():
+    """Site 6 on the MuJoCo Go2: just after a rescue the next target was 41 m away on the far side of the
+    rescued survivor. The route ran straight through that survivor's keep-out region, which the MPC only
+    sees as a soft cost, so at the region's edge every rollout cost more than standing still and the robot
+    stood there for 516 s. With the region in the route the robot walks around it."""
+    from rescue.safety import CBFFilter, SafetyParams
+    from rescue.sim import Go2Params, step_unicycle
+    site = make_site(6)
+    grid = TerrainGrid(site)
+    hz = [r for r in site.regions if r.kind == "hazard"]
+    cfg = StackConfig()
+    sp = SafetyParams(conf_p=cfg.conf_p, d_clear=cfg.d_clear, eps_track=cfg.eps_track, cp_offset=cfg.cp_offset,
+                      w_max=1.0)
+    filt = CBFFilter(sp)
+    q = np.array([18.5, 27.6])                            # the rescued survivor (keep-out centre)
+    R = filt.region_radius(cfg.sigma_floor)
+    goal = np.array([22.92, 66.12])                       # standoff of the next target, logged in the episode
+    pos, hd, v = np.array([17.28, 25.41]), 0.98, 0.0      # where and how the Go2 stood still
+    disc = [(q, R)]
+
+    def through(path):
+        pts = np.concatenate([np.linspace(a, b, 20) for a, b in zip(path[:-1], path[1:])])
+        return np.linalg.norm(pts - q, axis=1).min() < R
+
+    assert through(grid.path(pos, goal))                  # the old route crosses the region
+    assert not through(grid.path(pos, goal, disc)[1:])    # the new one does not
+
+    mpc = ApproachMPC(w_max=1.0)
+    p = Go2Params(max_turn_rate=1.0)
+    d0, dmin = np.linalg.norm(goal - pos), np.inf
+    for i in range(400):                                  # 40 s at 10 Hz, route replanned at 1 Hz
+        if i % 10 == 0:
+            path = grid.path(pos, goal, disc)
+        u_nom = np.array(mpc.solve(pos, hd, 1.0, lookahead(path, pos), hz, disc))
+        u, _ = filt.filter(pos, hd, u_nom, 1.0, hz, [(q, np.eye(2) * cfg.sigma_floor**2)])
+        pos, hd, v = step_unicycle(pos, hd, v, float(u[0]), float(u[1]), 0.1, p, site.bounds)
+        dmin = min(dmin, np.linalg.norm(pos - q))
+    assert np.linalg.norm(goal - pos) < d0 - 20.0         # it got well past the survivor
+    assert dmin >= cfg.d_clear + cfg.eps_track            # and kept the filter's clearance
+
+
 def test_log_prob_goal_prefers_true_goal_when_heading_to_it():
     goals = np.array([[20.0, 0.0], [20.0, 10.0]])
     S = np.zeros(2)

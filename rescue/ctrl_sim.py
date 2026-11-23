@@ -40,6 +40,7 @@ class CtrlLog(RunLog):
     state_trace: dict = field(default_factory=dict)    # survivor id -> [(t, p over 4 hypotheses)]
     first_seen: dict = field(default_factory=dict)     # survivor id -> time its track was first logged
     viol_events: list = field(default_factory=list)    # first few (t, id, dist, tracked?, pending?) for debugging
+    fell_at: float | None = None                       # time the MuJoCo Go2 fell (plant runs only)
 
 
 def _in_hazard(site: Site, p) -> bool:
@@ -51,8 +52,15 @@ def run_episode_ctrl(site: Site, prior_cfg: PriorConfig, stack_cfg: StackConfig,
                      T: float = 600.0, sensor_radius: float = 10.0, p_detect: float = 0.9,
                      sigma_meas: float = 0.5, params: Go2Params | None = None,
                      behavior: BehaviorConfig | None = None, dt: float = 0.1,
-                     rescue_radius: float = R_RESCUE, dwell: dict | None = None) -> CtrlLog:
+                     rescue_radius: float = R_RESCUE, dwell: dict | None = None, plant=None) -> CtrlLog:
+    """``plant`` (default None = the unicycle) can be a ``mj_plant.Go2MujocoPlant``: the commanded
+    (v, omega) is then tracked by the learned Go2 policy in MuJoCo, the pose comes back from it, and the
+    episode ends (``log.fell_at``) if the robot falls. Terrain stays a speed cap in the stack. With a plant
+    and no ``params``, the stack plans and filters with the plant's turn-rate limit (``plant.w_max``)."""
     p = params or Go2Params()
+    if plant is not None and params is None:
+        # plan and filter with the turn rate the plant can actually follow (the policy's +-1 rad/s range)
+        p = Go2Params(max_turn_rate=min(p.max_turn_rate, plant.w_max))
     beh = behavior or BehaviorConfig()
     rng = np.random.default_rng(seed)
     brng = np.random.default_rng(seed + 1_000_003)
@@ -95,6 +103,8 @@ def run_episode_ctrl(site: Site, prior_cfg: PriorConfig, stack_cfg: StackConfig,
             if heading is None:
                 d = stack.goal(pos) - pos
                 heading = float(np.arctan2(d[1], d[0])) if np.hypot(*d) > 1e-9 else 0.0
+                if plant is not None:
+                    plant.reset(pos, heading)
             for tr_mean, ph in stack.snapshot():
                 sid = min(pending | set(log.rescue_times), key=lambda s: np.linalg.norm(spos[s] - tr_mean))
                 if np.linalg.norm(spos[sid] - tr_mean) < 3.0:
@@ -106,8 +116,14 @@ def run_episode_ctrl(site: Site, prior_cfg: PriorConfig, stack_cfg: StackConfig,
         u = stack.control(t, pos, heading, v_cap, v)
         if not stack.last_info.get("feasible", True):
             log.infeasible_steps += 1
-        pos, heading, v = step_unicycle(pos, heading, v, float(u[0]), float(u[1]), dt, p, site.bounds)
-        v = min(v, speed_at(site, pos) * p.speed_scale)
+        if plant is None:
+            pos, heading, v = step_unicycle(pos, heading, v, float(u[0]), float(u[1]), dt, p, site.bounds)
+            v = min(v, speed_at(site, pos) * p.speed_scale)
+        else:
+            pos, heading, v = plant.step(float(u[0]), float(u[1]), dt)
+            if plant.fallen:
+                log.fell_at = t + dt
+                break
 
         for s in sorted(pending):
             if np.linalg.norm(spos[s] - pos) > rescue_radius:

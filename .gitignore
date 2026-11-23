@@ -4,6 +4,12 @@ __pycache__/
 runs/
 *.npz
 
+# Go2 training leftovers: the code uses sim/go2/policy.onnx and model/xmls/go2.xml only
+sim/go2/model_2999.pt
+sim/go2/model/__init__.py
+sim/go2/model/go2_constants.py
+sim/go2/model/xmls/scene_go2.xml
+
 # Third-party papers (copyright)
 docs/refs
 
