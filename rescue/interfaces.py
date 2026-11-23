@@ -38,6 +38,40 @@ PRIORITY_DECAY = {Priority.STABLE: 0.002, Priority.URGENT: 0.005, Priority.CRITI
 
 
 @dataclass(frozen=True)
+class RewardModel:
+    """Reward for reaching a survivor of class c and hidden state z at time tau (control-rate Q4-Q5 runs).
+
+    value = w_c * factor_z * exp(-lambda_c * decay_mult_z * tau) * 1[not (z mobile and tau > evac_time)]
+
+    ``BASE_REWARD`` keeps the original state-weighted score (the state only rescales the reward, so it
+    seldom changes the best visiting order). ``CONSEQ_REWARD`` gives the hidden state a real consequence:
+    unresponsive survivors deteriorate faster (decay x2) and mobile ones self-evacuate (reward is 0 once
+    ``evac_time`` has passed). Both are modelling choices, not calibrated to real triage outcomes.
+    """
+    factor: dict = field(default_factory=lambda: dict(STATE_FACTOR))
+    decay_mult: dict = field(default_factory=lambda: {z: 1.0 for z in ResponseState})
+    evac_time: float = float("inf")
+    dwell: dict = field(default_factory=lambda: {z: 0.0 for z in ResponseState})   # s of on-site handling after arrival
+
+    def value(self, priority: "Priority", state: "ResponseState", tau: float) -> float:
+        if state == ResponseState.MOBILE and tau > self.evac_time:
+            return 0.0
+        return (PRIORITY_WEIGHT[priority] * self.factor[state]
+                * float(np.exp(-PRIORITY_DECAY[priority] * self.decay_mult[state] * tau)))
+
+
+BASE_REWARD = RewardModel()
+CONSEQ_REWARD = RewardModel(decay_mult={ResponseState.UNRESPONSIVE: 2.0, ResponseState.TRAPPED: 1.0,
+                                        ResponseState.MOBILE: 1.0}, evac_time=240.0)
+CONSEQ_STRONG_REWARD = RewardModel(decay_mult={ResponseState.UNRESPONSIVE: 4.0, ResponseState.TRAPPED: 1.0,
+                                               ResponseState.MOBILE: 1.0}, evac_time=120.0)
+DWELL = {ResponseState.UNRESPONSIVE: 30.0, ResponseState.TRAPPED: 15.0, ResponseState.MOBILE: 0.0}
+TRIAGE_REWARD = RewardModel(decay_mult={ResponseState.UNRESPONSIVE: 2.0, ResponseState.TRAPPED: 1.0,
+                                        ResponseState.MOBILE: 1.0}, evac_time=240.0, dwell=DWELL)
+REWARDS = {"base": BASE_REWARD, "conseq": CONSEQ_REWARD, "conseq_strong": CONSEQ_STRONG_REWARD, "triage": TRIAGE_REWARD}
+
+
+@dataclass(frozen=True)
 class Survivor:
     id: int
     pos: np.ndarray            # (2,) ground-truth position
@@ -71,6 +105,7 @@ class Detection:
     pos: np.ndarray            # (2,) noisy position estimate
     priority: Priority         # (possibly wrong) class estimate
     source_id: int | None = None   # ground-truth survivor id; None for false positives (eval only)
+    state_hint: int | None = None  # drone's noisy guess of the hidden ResponseState (e.g. seen moving); None = no cue
 
 
 @dataclass(frozen=True)

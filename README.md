@@ -54,7 +54,10 @@ Closed-loop Q3-Q5 (control-rate simulator, `ctrl_sim.py`; the Q1-Q2 `sim.py` is 
 - `stack.py`: the three layers assembled, with variants for baselines 3 (no filter), 4 (no state inference) and 5 (communication oracle)
 - `ctrl_mpc.py`, `safety.py`: receding-horizon MPC with a terrain path planner, and a CBF-QP with ellipse and hazard barriers padded by a measured tracking error
 - `ctrl_behavior.py`: survivor simulation and online state inference; `legibility.py`, `approach.py`: legibility term, simulated observers and the Q5 approach scenarios
-- `ctrl_experiments.py` and `scripts/ctrl_run_q3.py`, `ctrl_run_q4.py`, `ctrl_run_q5.py`, `ctrl_plot.py`
+- `ctrl_experiments.py` and `scripts/ctrl_run_q3.py`, `ctrl_run_q4.py`, `ctrl_run_q5.py`, `ctrl_run_consistency.py`, `ctrl_plot.py`, `ctrl_stats.py` (paired differences with confidence intervals)
+- Q4 reward models (`interfaces.RewardModel`): `base` (state rescales the reward) and `triage` (state-dependent handling time, faster decay for unresponsive survivors, self-evacuation of mobile ones), used consistently by the search layer, the simulator and the oracle; an optional drone state cue (`PriorConfig.p_state_cue`, off by default) and the `oracle_global` upper-bound variant
+- Q5: a heading-legibility term in the planner (`StackConfig.legibility_heading`) and a learned third observer (`legibility.LearnedObserver`)
+- Q3: safety-region confidence sweep; optional 10 Hz measurement fusion (`StackConfig.avg_meas`, off: it did not help)
 
 ## Results
 
@@ -162,41 +165,134 @@ Aggregate scores do not show why a survivor is lost. Each panel of Figure 5 is o
 
 ## Closed-loop results: Q3-Q5
 
-Control-rate Go2 sim, T = 600 s, 40 sites per config (100 scenarios for Q5). Figures are committed in [`figures/closed_loop/`](figures/closed_loop/); `scripts/ctrl_plot.py` regenerates them (and these tables) into `runs/figures/` from `runs/*.csv`. Differences from the Q1-Q2 simulator: sensor radius 10 m (an onboard person detector), rescue radius 3.5 m (the robot confirms from a standoff outside the 1 m clearance), and survivors can move. Q3-Q4 scores are therefore not comparable with the Q1-Q2 tables. The survivor behavior, the state-dependent reward weights (unresponsive 1.5, trapped 1.0, mobile 0.4) and the prompt-response model are modelling choices, not calibrated to people.
+Control-rate Go2 sim, T = 600 s (300 s in the Q4 triage regime). **Q3 and Q4 use 100 sites per configuration (200 for the Q4 triage regime and 300 for the violation check); Q5 uses 100 scenarios.** Every comparison between methods is paired by site (same site, same drone detections) and reported as mean +/- 95% confidence half-width; a `*` marks an interval that excludes zero, uncorrected for multiple comparisons. `scripts/ctrl_stats.py` and `scripts/ctrl_plot.py` regenerate these tables and the figures from `runs/*.csv`. Figures are committed in [`figures/closed_loop/`](figures/closed_loop/).
 
-**Q3: safety under uncertainty.** A clearance violation is the robot centre within 1 m of any survivor (including ones already reached). Localization uncertainty is the robot's onboard measurement noise sigma_meas; the safety region is the 90% confidence ellipse of the belief.
+Differences from the Q1-Q2 simulator: sensor radius 10 m (an onboard person detector), rescue radius 3.5 m (the robot confirms from a standoff outside the 1 m clearance), and survivors can move. Q3-Q4 scores are therefore not comparable with the Q1-Q2 tables in absolute terms; the consistency check below compares the trends. The survivor behavior, the reward models and the prompt-response model are modelling choices, not calibrated to people.
 
-| sigma_meas (m)                     | 0.25 | 0.5  | 1.0  | 1.5  | 2.0  |
-| ---------------------------------- | ---- | ---- | ---- | ---- | ---- |
-| Episodes with violation, full      | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
-| Episodes with violation, no filter | 0.57 | 0.50 | 0.38 | 0.38 | 0.33 |
-| Score, full                        | 0.77 | 0.74 | 0.61 | 0.56 | 0.53 |
-| Score, no filter                   | 0.79 | 0.79 | 0.64 | 0.62 | 0.57 |
-| Rescue rate, full                  | 0.91 | 0.89 | 0.83 | 0.75 | 0.69 |
-| Rescue rate, no filter             | 0.94 | 0.93 | 0.86 | 0.84 | 0.73 |
+### Q3: safety under uncertainty
+
+A clearance violation is the robot centre within 1 m of any survivor (including ones already reached). Localization uncertainty is the robot's onboard measurement noise sigma_meas; the safety region is the confidence ellipse of the belief, padded by the clearance and a measured tracking error. Score is oracle-normalized (class weights).
+
+**Table 6.** Safety filter vs. no filter (confidence 0.9, 100 sites).
+
+| sigma_meas (m) | Episodes with violation, full | Episodes with violation, no filter | Score, full | Score diff. (full - no filter) | Rescue-rate diff. | Time-to-critical diff. (s) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0.25 | 0.00 | 0.61 | 0.72 | -0.036 +/- 0.016* | -0.028 +/- 0.017* | +40.5 +/- 26.9* |
+| 0.5 | 0.00 | 0.58 | 0.69 | -0.055 +/- 0.020* | -0.038 +/- 0.023* | +37.0 +/- 29.3* |
+| 1.0 | 0.00 | 0.44 | 0.59 | -0.009 +/- 0.016 | -0.013 +/- 0.029 | +26.4 +/- 30.7 |
+| 1.5 | 0.00 | 0.44 | 0.53 | -0.035 +/- 0.032* | -0.062 +/- 0.051* | +45.7 +/- 37.4* |
+| 2.0 | 0.00 | 0.40 | 0.50 | -0.031 +/- 0.031* | -0.007 +/- 0.053 | +29.0 +/- 35.5 |
 
 ![Q3: violations, score and rescue rate vs. localization noise](figures/closed_loop/q3_uncertainty.png)
 
-**Answer.** The filter removed every clearance violation in every condition. The price is 2 to 6 points of normalized score, and the loss from uncertainty itself (0.77 to 0.53) is larger than the loss from the filter. A hazard-blind planner (stress test) entered hazards in 50% of unfiltered episodes and 0% of filtered ones, at 4 points of score. With the hazard-aware planner neither variant entered a hazard, so the hazard barrier only matters when the planner fails. Raising the confidence level from 0.5 to 0.99 lowers the score from 0.78 to 0.51. The filter needs active uncertainty reduction: when the safety region is as large as the sensing range, the robot circles the region until it sees the survivor.
+**Figure 6.** Violations, score and rescue rate vs. onboard localization noise, full system vs. no filter (lines are means over 100 sites, bands 95% CIs).
 
-**Q4: survivor state.** At the default config the full system infers the state with 88% accuracy (oracle 98%) and settles on the right state about 3.2 s after the first sighting. It does not improve the rescue score: 0.745 with inference, 0.743 without, 0.743 with the oracle. At default settings the state-based weights rarely change the visiting order, so we do not claim a benefit from inference on this metric. Accuracy falls as survivors move out of model: 0.84 with no erratic survivors, 0.69 with half of the mobile survivors erratic, 0.54 with all of them, and only 35-40% on the erratic survivors themselves. Ablation curves (prior noise, false positives, survivor count, fraction mobile, prompt reliability, erratic fraction) are below.
+**What the filter costs, and how to reduce it.** The cost is the conservative region around survivors the robot has not yet localized. At confidence 0.9 it is 1 to 5 points of score and 25 to 45 s on time to critical, detectable at four of five noise levels. Lowering the confidence of the region removes nearly all of it with no loss of safety:
 
-![Q4 ablations](figures/closed_loop/q4_ablations.png)
+**Table 7.** Score difference vs. no filter by confidence level of the safety region (100 sites).
 
-**Q5: legibility.** On open ground with one distractor on the same side, weight lambda = 300 on a mobile survivor:
+| sigma_meas (m) | conf 0.5 | conf 0.7 | conf 0.8 | conf 0.9 |
+| --- | --- | --- | --- | --- |
+| 0.5 | -0.001 +/- 0.012 | -0.007 +/- 0.010 | -0.018 +/- 0.016* | -0.055 +/- 0.020* |
+| 1.0 | +0.006 +/- 0.013 | +0.004 +/- 0.015 | +0.002 +/- 0.024 | -0.009 +/- 0.016 |
+| 2.0 | -0.023 +/- 0.021* | -0.015 +/- 0.025 | -0.040 +/- 0.029* | -0.031 +/- 0.031* |
 
-| | no legibility | lambda = 300 |
-| --- | --- | --- |
-| Approach time (s) | 19.5 | 25.9 (+33%) |
-| Time for the cost-model observer to identify the goal (s) | 13.6 | 7.5 |
-| Mean P(true goal), cost-model observer | 0.77 | 0.91 |
-| Mean P(true goal), heading observer | 0.78 | 0.81 |
+Episodes with a violation were 0 in every cell. A larger check at sigma_meas 1.0 and 2.0 and confidence 0.5, 0.7 and 0.9 (300 sites each, 1800 episodes) again had **0 clearance violations and 0 hazard entries**, with minimum robot-survivor distance never below 2.1 m against the 1 m requirement, so the 95% upper bound on the violation rate is about 1% per setting. The reason the lower confidence is free is that the fixed margins (1 m clearance, tracking-error pad, control-point offset) already keep the robot well clear: the region's confidence level adds little safety here but costs time. The lower levels rest on those margins; with a smaller margin the confidence level would matter again. Raising the confidence to 0.95 and 0.99 lowers the score to 0.61 and 0.47 (sigma_meas 0.5). The code default stays at 0.9 so earlier numbers remain comparable; **0.7 is the recommended setting.**
 
-**Answer.** Yes for the cost-model observer, at about a third more approach time. The cost-model observer is the same family as the planner's legibility term, so that result is partly by construction; the heading observer, which does not share it, barely improves. ![Q5: legibility weight vs. approach time and observer belief](figures/closed_loop/q5_legibility.png)
+![Q3: confidence level](figures/closed_loop/q3_confidence.png)
 
-Weighting by inferred state removes the cost for unresponsive survivors (19.5 s, no change) and lowers it for trapped ones, whereas a state-blind planner pays the full cost for everyone.
+**Figure 7.** Violations and score difference vs. no filter by region confidence level, for three noise levels.
 
-**Which implementation drives the closed loop.** The standalone components (`mpc.py` MPPI planner, `cbf.py` filter, `clearance.py`, `observer.py`, `behavior.py`) and the closed-loop modules (`ctrl_mpc.py`, `safety.py`, `stack.py`, `ctrl_sim.py`, `ctrl_behavior.py`) were compared by running both controllers in the same control-rate simulation (`StackConfig(controller="closed_loop" | "components")`), 30 sites, same search layer, sensors and survivors:
+**Tried, and did not help.** Fusing all 10 Hz detections in a second (`StackConfig(avg_meas=True)`: mean with std sigma_meas/sqrt(n), so the region shrinks faster) lowered the filtered score (0.48 vs 0.59 at sigma_meas 1.0, 0.33 vs 0.51 at 2.0) and is left off.
+
+**Hazard stress test.** With a hazard-blind planner the unfiltered stack entered a hazard in 57% of episodes and had a clearance violation in 66%; the filtered one had neither, at 7 points of score (0.65 vs 0.72). With the hazard-aware planner neither variant entered a hazard, so the hazard barrier matters only when the planner fails.
+
+**Answer.** Yes. The filter eliminated every clearance violation in every condition (over 4,000 filtered episodes in total), against 40-61% of unfiltered episodes with one. At the default confidence it costs 1 to 5 points of score; at confidence 0.5-0.7 the cost is within noise of zero at 100 sites, with violations still at zero. The loss from localization uncertainty itself (0.72 to 0.50 as sigma_meas grows) is larger than the filter's. The filter needs active uncertainty reduction: when the safety region is as large as the sensing range, the robot circles the region until it sees the survivor.
+
+### Q4: survivor state
+
+Inference quality at the default config: the full system infers the state with **88% accuracy** (communication oracle 97%, no-inference baseline 35%, the accuracy of the prior alone) and settles on the right state on average **4.8 s** after the first sighting. Accuracy falls as survivors move out of model: 0.87 with no erratic survivors, 0.71 with half of the mobile survivors erratic, 0.56 with all of them, and only 36-40% on the erratic survivors themselves (see [`q4_ablations.png`](figures/closed_loop/q4_ablations.png) for the other ablations: prior noise, false positives, survivor count, fraction mobile, prompt reliability). Two of those panels need care. The prompt-reliability panel is flat because the default-scene score is insensitive to inference quality, not because reliability has no effect: state accuracy rises from 75% (q = 0.4) to 96% (q = 1.0) while the score stays at 0.706. The erratic-fraction panel rises (0.672 to 0.736) because erratic survivors do not flee the robot the way retreating ones do, so it is confounded with how hard survivors are to reach; read the accuracy numbers above for robustness.
+
+**Does inferring the state help the rescue score?** It depends on whether state changes the best decision. We test two configurations, reported side by side.
+
+*Default scene (reward `base`).* The state only rescales each survivor's reward (unresponsive 1.5, trapped 1.0, mobile 0.4), 3-8 survivors, T = 600 s. Here inference does nothing: state-weighted score (paired difference vs. no inference, 100 sites) is **-0.002 +/- 0.005** for the full system and **-0.006 +/- 0.008** for the communication oracle; the no-inference score is 0.708. The interval is tight, so this is a clean null, not an underpowered one. It is also explained: an exhaustive search over visiting orders with perfect state knowledge improves the oracle-relative score by only 0.8% (`base`), 1.1% (state-dependent decay, `conseq`) or 3.7% (stronger decay and earlier self-evacuation, `conseq_strong`) over the best order that ignores the state (25-60 sites). With 3-8 survivors the nearest-first order is close to optimal whatever their state, so the state cannot matter much, and no reward-weight tuning in this scene changes that.
+
+*Triage regime (reward `triage`).* State must change what acting costs, not only what it is worth. Unresponsive survivors need 30 s of on-site assessment, trapped ones 15 s and mobile ones none (a prompt is enough); unresponsive survivors also deteriorate twice as fast, and mobile survivors self-evacuate after 240 s (reward 0 after that). The robot cannot reach everyone: 8 survivors, T = 300 s. Both the search layer and the oracle use this reward (the search maximizes expected reward per unit of travel plus expected handling time under its belief over the state; the oracle's best order is brute-forced with the same handling times). In this regime knowing the state is worth up to 7.9% of the score (the same exhaustive-order calculation, 25 sites; with 8 survivors and T = 600 s it is 1.9%, and 1.2% in the default scene), and inference captures part of it:
+
+**Table 8.** State-weighted score minus the no-inference baseline, triage regime (8 survivors, T = 300 s, 200 sites).
+
+| Drone state cue | No-inference score | Full (inference) | Communication oracle (in range) | Global oracle (all states known at t = 0, upper bound) |
+| --- | --- | --- | --- | --- |
+| none | 0.539 | +0.011 +/- 0.008* | +0.017 +/- 0.009* | +0.029 +/- 0.023* |
+| 0.7 accuracy | 0.542 | +0.020 +/- 0.021 | +0.021 +/- 0.021 | +0.021 +/- 0.025 |
+
+![Q4: triage regime](figures/closed_loop/q4_triage.png)
+
+**Figure 8.** Left: paired gain over no inference in the triage regime, with and without a noisy drone state cue. Right: gain vs. number of survivors (no cue, Table 9). Bars are 95% CIs.
+
+**Table 9.** The gain grows with how overloaded the robot is (triage regime, T = 300 s, no drone cue, 200 sites).
+
+| Survivors | No-inference score | Full (inference) | Communication oracle (in range) | Global oracle (upper bound) |
+| --- | --- | --- | --- | --- |
+| 4 | 0.620 | -0.000 +/- 0.002 | +0.001 +/- 0.002 | +0.020 +/- 0.024 |
+| 6 | 0.580 | +0.006 +/- 0.007 | +0.000 +/- 0.009 | -0.007 +/- 0.023 |
+| 8 | 0.539 | +0.011 +/- 0.008* | +0.017 +/- 0.009* | +0.029 +/- 0.023* |
+
+With 4 survivors the robot can reach everyone and state information is worth nothing; the gain appears only as the site becomes capacity-limited. Only the 8-survivor row excludes zero.
+
+**Answer.** Inference works (88% accurate, about 5 s to settle), but what it is worth depends on whether state changes the decision. In the default scene it is worth nothing measurable (-0.002 +/- 0.005), and a perfect-knowledge ceiling of 1-4% shows why. When the robot is capacity-limited and state sets the handling time, it improves the score by about one point (+0.011 +/- 0.008), a bit more than half of what the in-range oracle gets (+0.017 +/- 0.009) and about a third of the global-knowledge bound (+0.029 +/- 0.023); the three are ordered by how early and how completely the state is known. State information is only valuable before the robot commits to a survivor, and the onboard sensor delivers it too late to capture the whole gain. A noisy drone cue (70% accurate) gives no further detectable gain. The triage effect is small in absolute terms and rests on modelling choices (handling times, decay, self-evacuation) that are not calibrated to people.
+
+### Q5: legibility
+
+On open ground with one distractor on the same side, mobile survivor, 100 scenarios. Three simulated observers score each approach: a cost-model observer (same family as the planner's cost term, so partly by construction), a heading-extrapolation observer, and a **learned observer**: a conditional-logit goal classifier trained on synthetic noisy-rational walkers (features: motion direction toward each goal and progress toward it), which shares neither the planner's model nor a hand-set likelihood. The planner has two legibility terms: the cost-model term (weight lambda) and a heading term (weight lambda_head) that rewards motion pointing at the true goal rather than the distractors.
+
+**Table 10.** Mean P(true goal) over the approach and approach time, mobile survivor.
+
+| | Approach time (s) | Cost-model observer | Heading observer | Learned observer |
+| --- | --- | --- | --- | --- |
+| No legibility | 19.5 | 0.77 | 0.78 | 0.89 |
+| Cost term, lambda = 300 | 25.9 (+33%) | 0.91 | 0.81 | 0.93 |
+| Heading term, lambda_head = 3 | 20.5 (+5%) | 0.84 | 0.83 | 0.94 |
+
+**Table 11.** Paired differences vs. no legibility (mobile survivor; time in s, others in P(goal)).
+
+| lambda (cost) | lambda_head | Approach time | Cost-model observer | Heading observer | Learned observer |
+| --- | --- | --- | --- | --- | --- |
+| 300 | 0 | +6.41 +/- 0.48* | +0.14 +/- 0.01* | +0.03 +/- 0.00* | +0.05 +/- 0.01* |
+| 0 | 1 | +0.08 +/- 0.01* | +0.01 +/- 0.00* | +0.02 +/- 0.00* | +0.02 +/- 0.00* |
+| 0 | 2 | +0.49 +/- 0.03* | +0.05 +/- 0.00* | +0.04 +/- 0.00* | +0.04 +/- 0.01* |
+| 0 | 3 | +0.96 +/- 0.06* | +0.07 +/- 0.01* | +0.05 +/- 0.00* | +0.05 +/- 0.01* |
+| 0 | 5 | +12.86 +/- 6.12* | +0.10 +/- 0.01* | +0.04 +/- 0.01* | +0.03 +/- 0.02* |
+| 300 | 3 | +7.67 +/- 0.50* | +0.14 +/- 0.01* | +0.03 +/- 0.00* | +0.04 +/- 0.01* |
+| 300 | 5 | +33.98 +/- 8.15* | +0.16 +/- 0.01* | -0.04 +/- 0.02* | -0.05 +/- 0.03* |
+
+![Q5: legibility weight vs. approach time and observer belief](figures/closed_loop/q5_legibility.png)
+
+**Figure 9.** Legibility weight vs. approach time and each observer's mean P(true goal), by true survivor state and for a state-blind planner (dashed).
+
+**Answer.** Yes, and the result no longer rests on one observer model: both terms raise P(true goal) for all three observers, including the independent learned one (cost term +0.05 +/- 0.01, heading term +0.05 +/- 0.01). They differ in cost. The cost term at lambda = 300 buys its gain at about a third more approach time (+6.4 s); the heading term at lambda_head = 3 buys the same gain for the learned observer, and a larger one for the heading observer (+0.05 vs. +0.03), for about 1 s (+5%). Combining them adds time without adding to the independent observers' gain, and weights beyond about 3 for the heading term (or lambda_head = 5 with the cost term) make the robot hover and lose legibility, so the useful range is narrow. The cost-model observer's gain is still partly by construction. Weighting by inferred state removes the cost for unresponsive survivors (19.5 s, no change) and lowers it for trapped ones, whereas a state-blind planner pays the full cost for everyone.
+
+### Consistency with Q1-Q2
+
+The two simulators differ on purpose, so we compare trends. Running the closed-loop sim over the Q1 prior sweeps (safety filter off, 100 sites, class-weighted score) and comparing relative score (score / score at the best setting) with the frozen Q1 tables (`scripts/ctrl_run_consistency.py`):
+
+**Table 12.** Relative score (score / best setting): closed-loop sim vs. frozen Q1.
+
+| Position noise sigma (m) | 1 | 3 | 6 | 10 | 15 | 25 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Frozen Q1 | 1.00 | 0.90 | 0.69 | 0.48 | 0.32 | 0.12 |
+| Closed-loop, 5 m sensor (as in Q1) | 1.00 | 0.85 | 0.65 | 0.46 | 0.27 | 0.14 |
+| Closed-loop, 10 m sensor (default) | 1.00 | 0.94 | 0.88 | 0.76 | 0.68 | 0.49 |
+
+| False positives per site | 0 | 1 | 3 | 6 | 10 | 20 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Frozen Q1 | 1.00 | 0.92 | 0.86 | 0.78 | 0.67 | 0.58 |
+| Closed-loop, 5 m sensor | 1.00 | 0.98 | 0.95 | 0.86 | 0.75 | 0.63 |
+| Closed-loop, 10 m sensor (default) | 1.00 | 0.93 | 0.87 | 0.83 | 0.69 | 0.65 |
+
+Both sims degrade monotonically (Spearman -1.00) in both sweeps. With the same 5 m sensing range the closed-loop sim reproduces the Q1 noise curve to within 0.05 in relative score; the default 10 m sensor flattens it (relative score 0.49 vs. 0.12 at sigma 25), because a wider sensor finds survivors that a poor prior misplaces. The false-positive curves agree within 0.07 (10 m) and 0.09 (5 m). The closed-loop sim is therefore consistent with the frozen Q1 trends, and the differences are explained by the sensing range.
+
+**Which implementation drives the closed loop.** The standalone components (`mpc.py` MPPI planner, `cbf.py` filter, `clearance.py`, `observer.py`, `behavior.py`) and the closed-loop modules (`ctrl_mpc.py`, `safety.py`, `stack.py`, `ctrl_sim.py`, `ctrl_behavior.py`) were compared by running both controllers in the same control-rate simulation (`StackConfig(controller="closed_loop" | "components")`), 30 sites, same search layer, sensors and survivors (run before the Q3-Q5 changes above):
 
 | sigma_meas (m) | controller | filter | score | rescue rate | episodes with clearance violation |
 | --- | --- | --- | --- | --- | --- |
@@ -213,7 +309,7 @@ Both filters eliminate clearance violations; the closed-loop controller reaches 
 
 ## Limitations
 
-Survivors are a crude stand-in for people: three states, constant-speed motion, and a fixed response model. Locomotion is a reduced-order unicycle with a measured tracking-error pad, not a full-body Go2 with a learned policy, and the drone detector is parametric noise, not image-derived. The oracle for Q3-Q4 uses survivors' initial positions.
+Survivors are a crude stand-in for people: three states, constant-speed motion, a fixed response model, and handling times, decay rates and self-evacuation that are modelling choices. The Q4 triage effect is small (about one point) and exists only when the robot is capacity-limited and state sets the handling time; it should not be read as a measured benefit for real triage. Locomotion is a reduced-order unicycle with a measured tracking-error pad, not a full-body Go2 with a learned policy, and the drone detector is parametric noise, not image-derived. The oracle for Q3-Q4 uses survivors' initial positions. The lower-confidence safety result (zero violations at 0.5-0.7) depends on the 1 m clearance and the fixed margins and was checked at three confidence levels and two noise levels, not at every setting. The Q5 observers are simulated people (the learned one is trained on synthetic walkers), not human subjects.
 
 ## Layout
 
@@ -238,7 +334,9 @@ scripts/plot_results.py # figures from runs/*.csv
 scripts/render_site.py  # site and rollout figures
 scripts/render_cases.py # six-panel case-study figure, --stats / --budget
 scripts/run_q3.py, run_q4.py, run_q5.py   # standalone component evaluations
-scripts/ctrl_run_q3.py, ctrl_run_q4.py, ctrl_run_q5.py, ctrl_plot.py   # closed-loop Q3-Q5
+scripts/ctrl_run_q3.py, ctrl_run_q4.py, ctrl_run_q5.py   # closed-loop Q3-Q5 runs
+scripts/ctrl_run_consistency.py   # closed-loop sim vs. the frozen Q1 trends
+scripts/ctrl_stats.py, ctrl_plot.py   # paired-difference tables and figures
 tests/
 docs/INTERFACES.md
 ```
@@ -252,10 +350,14 @@ PYTHONPATH=. python scripts/smoke_test.py 20 --sim go2
 RESCUE_SIM=go2 PYTHONPATH=. python scripts/run_sweeps.py 40   # -> runs/*.csv
 PYTHONPATH=. python scripts/plot_results.py                    # -> runs/figures/
 PYTHONPATH=. python scripts/render_cases.py --stats --budget   # -> figures/path_planning/cases_grid.png
-PYTHONPATH=. python scripts/ctrl_run_q3.py 40 8    # closed-loop Q3 -> runs/q3_*.csv (last arg: workers; keep ~8 on Windows)
-PYTHONPATH=. python scripts/ctrl_run_q4.py 40 8    # Q4 -> runs/q4_*.csv
-PYTHONPATH=. python scripts/ctrl_run_q5.py 100 8   # Q5 -> runs/q5.csv
-PYTHONPATH=. python scripts/ctrl_plot.py           # -> runs/figures/ and markdown tables
+# closed-loop Q3-Q5, as reported (last argument: workers; keep ~8 on Windows). Each Q4 triage study is its own sweep.
+PYTHONPATH=. python scripts/ctrl_run_q3.py 100 8                # Q3 -> runs/q3_*.csv (incl. confidence sweep)
+PYTHONPATH=. python scripts/ctrl_run_q4.py 100 8 default        # Q4 default scene -> runs/q4_*.csv
+PYTHONPATH=. python scripts/ctrl_run_q4.py 200 8 triage         # Q4 triage regime -> runs/q4_triage*.csv
+PYTHONPATH=. python scripts/ctrl_run_q5.py 100 8                # Q5 (three observers, heading-term sweep) -> runs/q5.csv
+PYTHONPATH=. python scripts/ctrl_run_consistency.py 100 8       # vs. frozen Q1; add a 4th argument 5 for a 5 m sensor
+PYTHONPATH=. python scripts/ctrl_stats.py                       # paired differences with 95% CIs (markdown)
+PYTHONPATH=. python scripts/ctrl_plot.py                        # -> runs/figures/ and markdown tables
 ```
 
 Requires Python 3.10+, numpy, scipy, matplotlib.
