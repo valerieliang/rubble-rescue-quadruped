@@ -56,10 +56,20 @@ def run_job(job: tuple) -> dict:
             "n_survivors": len(site.survivors), **row}
 
 
+def _set_reward(weights, decays):
+    """Pool initializer: overwrite the class weights / decay rates in place (the search layer, the metrics and the
+    oracle all read the same dicts), so a sweep over the reward shape needs no other change. (stable, urgent, critical)"""
+    from .interfaces import PRIORITY_DECAY, PRIORITY_WEIGHT, Priority
+    for pr, w, d in zip((Priority.STABLE, Priority.URGENT, Priority.CRITICAL), weights, decays):
+        PRIORITY_WEIGHT[pr], PRIORITY_DECAY[pr] = w, d
+    _site_and_oracle.cache_clear()
+
+
 def run_grid(cfgs: list[PriorConfig], methods: list[str], seeds: range, T: float = 600.0,
-             workers: int | None = None, n_survivors: int | None = None) -> list[dict]:
+             workers: int | None = None, n_survivors: int | None = None, reward=None) -> list[dict]:
+    """``reward``: optional (weights, decays), each (stable, urgent, critical), replacing the class reward for this run."""
     jobs = [(s, m, c, T, n_survivors) for c in cfgs for s in seeds for m in methods]
-    with Pool(workers) as pool:
+    with Pool(workers, *(() if reward is None else (_set_reward, reward))) as pool:
         return pool.map(run_job, jobs, chunksize=8)
 
 

@@ -143,7 +143,27 @@ Both methods use the same prior; they differ only in whether the triage class se
 
 **Answer.** Only partly, and only when the classes are reliable. Priority weighting does nothing at 40-80% class accuracy. Only the 90% and 100% points exclude zero, and those intervals are not corrected for the five comparisons. Even at 100% the gain is about 3 points of normalized score, so the effect is small. Most of the benefit of the pipeline comes from the prior (Q1), not from priority ordering.
 
-**Regime check: is ordering only useful when the robot is time-limited?** One explanation for the null is that T = 600 s rarely binds, so ordering has little to trade off. We tested it (`scripts/run_regime.py`, 160 sites per cell): priority vs. nearest-first over T = 100, 150, 300, 600 s and 3, 5, 8 survivors per site, at the default 80% class accuracy and at 100%. At 80% every score difference is within +/-0.025 of zero and no cell excludes it (for example 8 survivors, T = 100 s: -0.007 +/- 0.027). At 100% the point estimates are small (-0.011 to +0.023); two of the twelve cells exclude zero (5 survivors at T = 300 s, +0.022 +/- 0.019, and at T = 600 s, +0.023 +/- 0.018), uncorrected for the twelve comparisons and not in the short-T cells where ordering should matter most. Nearest-first itself falls from 0.70 to 0.47-0.58 as T shrinks, so the robot is capacity-limited in the short-T cells, and ordering still does not help. **So "T rarely binds" is not the reason**; with weights 1/2/4 and a travel-time denominator, nearest-first is already close to the best order on these sites. Time to critical at 100% accuracy is a few seconds faster with priority (for example -6.4 +/- 8.3 s at 8 survivors, T = 300 s). Results are in `runs/regime_q2.csv`.
+**Regime check: is ordering only useful when the robot is time-limited?** One explanation for the null is that T = 600 s rarely binds, so ordering has little to trade off. We tested it (`scripts/run_regime.py`, 160 sites per cell): priority vs. nearest-first over T = 100, 150, 300, 600 s and 3, 5, 8 survivors per site, at the default 80% class accuracy and at 100%. At 80% every score difference is within +/-0.025 of zero and no cell excludes it (for example 8 survivors, T = 100 s: -0.007 +/- 0.027). At 100% the point estimates are small (-0.011 to +0.023); two of the twelve cells exclude zero (5 survivors at T = 300 s, +0.022 +/- 0.019, and at T = 600 s, +0.023 +/- 0.018), uncorrected for the twelve comparisons and not in the short-T cells where ordering should matter most. Nearest-first itself falls from 0.70 to 0.47-0.58 as T shrinks, so the robot is capacity-limited in the short-T cells, and ordering still does not help. **So "T rarely binds" is not the reason.** The reason is in the reward itself (next paragraph). Time to critical at 100% accuracy is a few seconds faster with priority (for example -6.4 +/- 8.3 s at 8 survivors, T = 300 s). Results are in `runs/regime_q2.csv`.
+
+**Why ordering is null: the decay cancels the class weights.** The reward for reaching a survivor at time t is `w * exp(-decay * t)` with weights 1/2/4 and decays 0.002/0.005/0.01 per s (stable/urgent/critical; modelling choices, not calibrated). A critical survivor is worth 4x a stable one at t = 0, 2.5x at 60 s, 1.5x at 120 s, and **less than a stable one after 173 s** (an urgent one after 231 s); the mean rescue time is about 190 s. So by the time the robot arrives, class says little about what a rescue is worth, and there is little for ordering to gain. We tested this by changing the reward shape (`scripts/run_reward_shape.py`; 8 survivors, T = 300 s, 160 sites, then 160 fresh sites; each setting scored against its own oracle; priority minus nearest-first, score):
+
+**Table 4b.** Priority minus nearest-first by reward shape (`*` = interval excludes zero; 16 settings, uncorrected).
+
+| Reward | 80% labels | 100% labels | 100% labels, fresh sites |
+| --- | --- | --- | --- |
+| Default (weights 1/2/4, decay x1) | -0.001 +/- 0.017 | +0.008 +/- 0.019 | +0.013 +/- 0.015 |
+| No decay | -0.026 +/- 0.024* | -0.015 +/- 0.024 | -0.009 +/- 0.023 |
+| Decay x0.3 | -0.010 +/- 0.022 | +0.006 +/- 0.022 | +0.015 +/- 0.018 |
+| Decay x3 | -0.008 +/- 0.014 | -0.003 +/- 0.015 | +0.002 +/- 0.013 |
+| Decay x10 | +0.006 +/- 0.030 | +0.044 +/- 0.024* | +0.039 +/- 0.023* |
+| Weights 1/4/16, decay x1 | +0.012 +/- 0.029 | +0.051 +/- 0.025* | +0.049 +/- 0.023* |
+| Weights 1/4/16, decay x3 | +0.001 +/- 0.023 | +0.018 +/- 0.021 | +0.024 +/- 0.022* |
+| Class irrelevant (weights 1/1/1, no decay) | -0.011 +/- 0.006* | +0.002 +/- 0.012 | -0.002 +/- 0.006 |
+
+- **Making survivors die faster does not fix it, and it hurts time to critical.** With decay x10 the score gain is +0.04 at 100% labels, but priority reaches critical survivors **about 77 s later** than nearest-first (+77 +/- 13 s; +87 +/- 12 s on fresh sites). The search score is time-discounted, so when critical survivors decay quickly the planner writes them off and goes to stable ones, which is the opposite of triage.
+- **What helps is weights that outlast the decay.** With weights 1/4/16 and the default decay, priority gains +0.05 (+0.051 +/- 0.025, fresh +0.049 +/- 0.023) and reaches critical survivors 26 s sooner (-26 +/- 10 s), the clearest case for priority ordering we found.
+- **It still needs accurate labels.** At 80% labels none of the settings is positive and detectable, including the 1/4/16 weights (+0.012 +/- 0.029). This matches Table 4.
+- **Reading it:** this is a sensitivity analysis of an assumed reward, not evidence about real triage. It says priority ordering pays only if the class weight is large enough to survive the time decay and the drone's labels are about 90%+ accurate; with the default reward it does neither. Only two of the eight settings are detectable at 100% labels on both site sets, and with 16 settings some stars are expected by chance, so treat the pattern, not any single cell, as the finding.
 
 The Go2 and toy simulators give near-identical numbers. Hazards are slow but traversable, and robot pose is true pose.
 
@@ -577,7 +597,7 @@ scripts/ctrl_run_q3.py, ctrl_run_q4.py, ctrl_run_q5.py   # closed-loop Q3-Q5 run
 scripts/ctrl_run_q4_triage_large.py   # Q4 triage replication on 500 fresh sites
 scripts/run_retention.py, run_retention_checks.py, plot_retention.py   # track-retention ablation, fresh-site / region-size / false-positive checks, figure
 scripts/ctrl_run_retention.py   # retention in the closed-loop stack
-scripts/run_regime.py   # Q2 priority vs. nearest-first over horizon and survivor count
+scripts/run_regime.py, run_reward_shape.py   # Q2 priority vs. nearest-first over horizon / survivor count, and over the class reward shape
 scripts/mj_sudden_threat.py   # sudden close-range threat on both plants
 scripts/profile_layers.py   # per-layer compute timing
 scripts/render_rollout.py, render_pipeline.py   # filtered vs. unfiltered rollout figure, pipeline diagram
