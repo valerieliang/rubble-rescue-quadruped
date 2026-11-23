@@ -33,7 +33,7 @@ BEH_KEYS = set(BehaviorConfig.__dataclass_fields__) - {"reliability"}
 SITE_KEYS = {"n_survivors", "frac_mobile"}
 SIM_KEYS = {"sigma_meas", "sensor_radius"}
 STACK_KEYS = set(StackConfig.__dataclass_fields__) - {"reliability"}
-META = {"seed", "variant", "label", "T"}
+META = {"seed", "variant", "label", "T", "plant"}   # plant: "unicycle" (default) or "mujoco" (learned Go2)
 
 
 def usable_seeds(n: int, start: int = 0) -> list[int]:
@@ -97,13 +97,18 @@ def run_ctrl_job(job: dict) -> dict:
     cfg = replace(VARIANTS[variant], **stack_kw)
     site = make_site(seed, ov.get("n_survivors"), ov.get("frac_mobile"))
     sim_kw = {k: v for k, v in ov.items() if k in SIM_KEYS}
+    plant = None
+    if job.get("plant") == "mujoco":
+        from .mj_plant import Go2MujocoPlant   # local import: needs mujoco and onnxruntime
+        plant = Go2MujocoPlant()
     log = run_episode_ctrl(site, prior, cfg, seed, variant, T=T, behavior=beh,
-                           dwell=REWARDS[ov.get("reward", "base")].dwell, **sim_kw)
+                           dwell=REWARDS[ov.get("reward", "base")].dwell, plant=plant, **sim_kw)
     rw = ov.get("reward", "base")
     o_state, o_class = _oracles(seed, ov.get("n_survivors"), ov.get("frac_mobile"), T, rw)
     sw = rescue_score(site, log, T, state_weighted=REWARDS[rw])
     cw = rescue_score(site, log, T)
     row = {"seed": seed, "variant": variant, "label": label, **ov,
+           "plant": job.get("plant", "unicycle"), "fell": int(log.fell_at is not None),
            "n_survivors_site": len(site.survivors),
            "norm_state": sw / o_state if o_state else float("nan"),
            "norm_class": cw / o_class if o_class else float("nan"),
