@@ -59,6 +59,12 @@ Closed-loop Q3-Q5 (control-rate simulator, `ctrl_sim.py`; the Q1-Q2 `sim.py` is 
 - Q5: a heading-legibility term in the planner (`StackConfig.legibility_heading`) and a learned third observer (`legibility.LearnedObserver`)
 - Q3: safety-region confidence sweep; optional 10 Hz measurement fusion (`StackConfig.avg_meas`, off: it did not help)
 
+Full Go2 model in MuJoCo with a learned locomotion policy (initial results, [below](#mujoco-go2-with-a-learned-locomotion-policy-initial-results)):
+
+- `mj_plant.py`: the Go2 robot model and learned velocity policy that `unitree_rl_mjlab` trains, rebuilt in plain MuJoCo, as an optional plant behind `ctrl_sim.py` (`run_episode_ctrl(..., plant=Go2MujocoPlant())`, or `plant="mujoco"` in an experiment job); the unicycle stays the default
+- `sim/go2/`: the trained policy (`policy.onnx`), its training configs and the robot model
+- `scripts/mj_calibrate.py` (tracking and the tracking-error pad), `mj_run_q3.py`, `mj_run_conf.py`, `mj_cbf_stress.py` (Q3 checks on both plants), `render_mj.py` (figures in `figures/mujoco/`)
+
 ## Results
 
 Go2 sim, T = 600 s, 40 sites per config (160 for Q2). Default prior: sigma 3 m, 1 false positive, 10% miss, 80% class accuracy. Each sweep varies one setting and holds the rest at default. Figures are committed in [`figures/metrics/`](figures/metrics/). The raw per-site results (`runs/*.csv`) are git-ignored; regenerate them, and fresh figures in `runs/figures/`, with the commands under Setup.
@@ -319,9 +325,96 @@ Both sims degrade monotonically (Spearman -1.00) in both sweeps. With the same 5
 
 Both filters eliminate clearance violations. The closed-loop controller is the default for all reported Q3-Q5 numbers because it was developed and tuned for this simulator; **the components controller was not retuned**, so this table compares a tuned controller with an untuned one and the speed gap is not evidence that the closed-loop design is intrinsically better. The standalone components are kept: the Bayes mode filter, terrain-aware observer and clearance regions are tested on their own (`tests/test_*`), and their controller can be switched in with `controller="components"`. It was not retuned for this simulator (its standoff is 1.2 m and it was written against a 1.5 m rescue radius).
 
+## MuJoCo Go2 with a learned locomotion policy (initial results)
+
+The results above use a reduced-order unicycle as the robot. Here the same stack drives a full Go2 model in MuJoCo, walking with a learned locomotion policy. The proposal planned this in Isaac Sim / Isaac Lab; it was done in MuJoCo instead, with the policy trained in mjlab (MuJoCo Warp). These are first results on fewer sites than the tables above (40 and 20 instead of 100), reported as means without paired confidence intervals.
+
+**Setup.**
+- **Policy.** `Unitree-Go2-Flat` from [`unitree_rl_mjlab`](https://github.com/unitreerobotics/unitree_rl_mjlab): velocity tracking, PPO, 3000 iterations with 4096 environments (about 295M steps, 1 h 23 min on one laptop RTX 5070 Ti under WSL2). At the end of training, episodes ran the full 20 s with almost no falls.
+- **Plant.** `rescue/mj_plant.py` rebuilds the training robot in MuJoCo 3.5.0 (position actuators with the training gains, feet-only collision, the training solver settings) and runs the exported policy at 50 Hz on 200 Hz physics. Joint order, default pose, gains, action scale and the observation layout are read from, and checked against, the policy file's metadata.
+- **Interface.** The stack's 10 Hz `(v, omega)` command becomes the policy's velocity command, clipped to its training range (forward speed -0.5 to 1.0 m/s, yaw rate +/-1.0 rad/s; the unicycle allowed 1.5 rad/s), and the pose comes back from the simulated robot.
+- **Unchanged.** The drone detections (`drone_prior.py` noise model), survivors, sensing and the whole stack. The ground is a flat plane; rubble remains a speed cap in the stack, not physical terrain.
+
+![The Go2 walking at 1.0 m/s in MuJoCo, one gait cycle](figures/mujoco/go2_walk.png)
+
+**Figure 10.** The trained policy walking at 1.0 m/s, one 0.6 s gait cycle.
+
+**Tracking** (`scripts/mj_calibrate.py`). The robot stood, walked and turned without falling. It walks about 10% slower than commanded and turns close to the commanded rate.
+
+**Table 13.** Commanded vs. achieved speed and yaw rate (steady state, 3 s).
+
+| Command | 0.3 m/s | 0.6 m/s | 1.0 m/s | 0.5 rad/s | 1.0 rad/s | -1.0 rad/s |
+| --- | --- | --- | --- | --- | --- | --- |
+| Achieved | 0.25 m/s | 0.54 m/s | 0.91 m/s | 0.43 rad/s | 0.95 rad/s | -1.00 rad/s |
+
+**Tracking-error pad.** This is the same measurement as `safety.calibrate_tracking_error`: the gap between where the robot ends up and where the planner's ideal unicycle would be, after 1 s of random constant commands (400 samples, no falls).
+
+**Table 14.** Tracking error after 1 s.
+
+| Plant | median | 95% | 99% | max |
+| --- | --- | --- | --- | --- |
+| MuJoCo Go2 | 0.077 m | 0.190 m | 0.250 m | 0.284 m |
+| Reduced-order unicycle (the previous measurement) | | 0.256 m | | |
+
+The pad in use, 0.25 m, covers the Go2's 95% gap, so it was left unchanged.
+
+**Q3 on both plants** (`scripts/mj_run_q3.py`, 40 sites, sigma_meas 0.5 m, confidence 0.7, same sites and drone detections on both).
+
+**Table 15.** Q3 on the unicycle and on the MuJoCo Go2.
+
+| Plant | Variant | Score | Rescue rate | Episodes with clearance violation | Min. distance (m) | Falls |
+| --- | --- | --- | --- | --- | --- | --- |
+| Unicycle | full | 0.781 | 0.94 | 0.00 | 2.42 | - |
+| MuJoCo Go2 | full | 0.716 | 0.91 | 0.00 | 2.42 | 0 |
+| Unicycle | no filter | 0.787 | 0.93 | 0.50 | 0.05 | - |
+| MuJoCo Go2 | no filter | 0.730 | 0.94 | 0.50 | 0.18 | 0 |
+
+- **Safety carries over.** With the filter, no episode had a violation on either plant; without it, half did on both.
+- **The legged robot costs score.** About 0.065 lower, consistent with it walking slower than the search layer's travel-time estimates assume.
+- **Closest approaches match.** Per site, the Go2's closest approach is within 0.03 m of the unicycle's on average (0.12 m at most).
+
+![Site 74 on the MuJoCo Go2](figures/mujoco/go2_site_074.png)
+
+**Figure 11.** Site 74, the site of the unicycle rollout figure ([`rollout_site_074.png`](figures/closed_loop/rollout_site_074.png)), run by the full stack on the MuJoCo Go2. Left: end of the episode, with the robot's trail at 1 Hz (rubble tan, hazards red, survivors colored by class). Right: the closest approach to a survivor, with the 1 m required clearance ring. The overlays are drawn for the figure and have no physics.
+
+**Smaller safety regions** (`scripts/mj_run_conf.py`, 20 sites, sigma_meas 1.0 m, filter on, 240 episodes). No episode had a violation in any setting on either plant. The closest approach stayed at least 1.97 m in every setting, so the margins did not get thin enough for the tracking-error pad to matter. The pad moves the closest approach out by about its own size.
+
+**Table 16.** Smaller safety regions, pad on and off.
+
+| Confidence | Pad (m) | Score, unicycle | Score, Go2 | Min. distance, unicycle (m) | Min. distance, Go2 (m) |
+| --- | --- | --- | --- | --- | --- |
+| 0.5 | 0 | 0.655 | 0.606 | 1.97 | 2.01 |
+| 0.5 | 0.25 | 0.652 | 0.594 | 2.21 | 2.22 |
+| 0.7 | 0 | 0.650 | 0.562 | 2.16 | 2.16 |
+| 0.7 | 0.25 | 0.627 | 0.575 | 2.39 | 2.40 |
+| 0.9 | 0 | 0.643 | 0.600 | 2.47 | 2.46 |
+| 0.9 | 0.25 | 0.626 | 0.607 | 2.63 | 2.66 |
+
+**Head-on stress test** (`scripts/mj_cbf_stress.py`). A controller walks the robot straight at a survivor whose position is known exactly, at 0.5 or 1.0 m/s, and the safety filter is the only thing that stops it. The filter guarantees a distance of at least the 1 m clearance plus the pad (for the model it assumes), and head-on it should stop 0.5 m beyond the clearance plus the pad (its barrier sits 0.25 m ahead of the robot with another 0.25 m of margin). Six runs per row.
+
+**Table 17.** Head-on stress test, 0.5 and 1.0 m/s pooled.
+
+| Pad (m) | Guaranteed distance (m) | Unicycle stops at (m) | MuJoCo Go2 stops at (m) | Runs inside the guarantee | Runs inside 1 m | Falls |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | 1.00 | 1.50 | 1.61 | 0 | 0 | 0 |
+| 0.25 | 1.25 | 1.75 | 1.86 | 0 | 0 | 0 |
+
+The values are the same at both speeds to within 0.01 m. The Go2 stops about 0.1 m short of the unicycle rather than overshooting, which fits it under-tracking the commanded speed while the filter brakes.
+
+![Head-on stress test on the MuJoCo Go2](figures/mujoco/go2_cbf_headon.png)
+
+**Figure 12.** Head-on stress test at 1.0 m/s with the pad on. Rings: 1.0 m required clearance (red) and the filter's 1.25 m bound (orange).
+
+**Answer so far.** The Q3 safety result carries over to a legged robot with a learned locomotion policy. The filter kept every episode violation-free, and the measured tracking error (0.19 m at 95%) is within the pad already in use. The cost is a lower rescue score, because the robot walks slower than commanded.
+
+**Not yet tested:**
+- an abrupt case, such as a survivor's estimate jumping close to the robot at full speed (the head-on test brakes gradually, and every run ended up approaching head-on);
+- physical rubble (the policy was trained on flat ground);
+- paired confidence intervals and the 100-site configuration of the main Q3 tables.
+
 ## Limitations
 
-Survivors are a crude stand-in for people: three states, constant-speed motion, a fixed response model, and handling times, decay rates and self-evacuation that are modelling choices. The Q4 triage effect is small (+0.004 +/- 0.004 pooled over 700 sites, not detectable at 200 or at 500 fresh sites) and could exist only when the robot is capacity-limited and state sets the handling time; it should not be read as a measured benefit for real triage. Locomotion is a reduced-order unicycle with a measured tracking-error pad, not a full-body Go2 with a learned policy, and the drone detector is parametric noise, not image-derived. The oracle for Q3-Q4 uses survivors' initial positions. The lower-confidence safety result (zero violations at 0.5-0.7) depends on the 1 m clearance and the fixed margins and was checked at three confidence levels and two noise levels, not at every setting. The Q5 observers are simulated people (the learned one is trained on synthetic walkers), not human subjects.
+Survivors are a crude stand-in for people: three states, constant-speed motion, a fixed response model, and handling times, decay rates and self-evacuation that are modelling choices. The Q4 triage effect is small (+0.004 +/- 0.004 pooled over 700 sites, not detectable at 200 or at 500 fresh sites) and could exist only when the robot is capacity-limited and state sets the handling time; it should not be read as a measured benefit for real triage. Locomotion in the main results is a reduced-order unicycle with a measured tracking-error pad. A full Go2 model with a learned policy has been added in MuJoCo (not Isaac Sim, as proposed) and checked for Q3 only, on flat ground with rubble kept as a speed cap (see above). The drone detector is parametric noise, not image-derived. The oracle for Q3-Q4 uses survivors' initial positions. The lower-confidence safety result (zero violations at 0.5-0.7) depends on the 1 m clearance and the fixed margins and was checked at three confidence levels and two noise levels, not at every setting. The Q5 observers are simulated people (the learned one is trained on synthetic walkers), not human subjects.
 
 ## Layout
 
@@ -340,6 +433,8 @@ rescue/
   clearance.py, mpc.py, cbf.py, behavior.py, observer.py   # standalone Q3-Q5 components
   ctrl_sim.py, stack.py, ctrl_mpc.py, safety.py, ctrl_behavior.py, legibility.py,
   approach.py, ctrl_experiments.py                          # closed-loop Q3-Q5
+  mj_plant.py      # MuJoCo Go2 + learned locomotion policy, optional plant for ctrl_sim
+sim/go2/           # trained policy (policy.onnx), its training configs, the Go2 MuJoCo model
 scripts/smoke_test.py   # compare methods over N sites
 scripts/run_sweeps.py   # Q1/Q2 sweeps -> runs/*.csv
 scripts/plot_results.py # figures from runs/*.csv
@@ -351,6 +446,7 @@ scripts/ctrl_run_q4_triage_large.py   # Q4 triage replication on 500 fresh sites
 scripts/render_rollout.py, render_pipeline.py   # filtered vs. unfiltered rollout figure, pipeline diagram
 scripts/ctrl_run_consistency.py   # closed-loop sim vs. the frozen Q1 trends
 scripts/ctrl_stats.py, ctrl_plot.py   # paired-difference tables and figures
+scripts/mj_calibrate.py, mj_run_q3.py, mj_run_conf.py, mj_cbf_stress.py, render_mj.py   # MuJoCo Go2 checks and figures
 tests/
 docs/INTERFACES.md
 ```
@@ -376,3 +472,15 @@ PYTHONPATH=. python scripts/ctrl_plot.py                        # -> runs/figure
 ```
 
 Requires Python 3.10+, numpy, scipy, matplotlib.
+
+MuJoCo Go2 (optional; needs `pip install "mujoco==3.5.0" onnxruntime`, the MuJoCo version the policy was trained against):
+
+```
+PYTHONPATH=. python scripts/mj_calibrate.py      # tracking checks and the tracking-error pad
+PYTHONPATH=. python scripts/mj_run_q3.py 40      # Q3 on both plants -> runs/mj_q3.csv
+PYTHONPATH=. python scripts/mj_run_conf.py 20    # smaller safety regions, pad on/off -> runs/mj_conf.csv
+PYTHONPATH=. python scripts/mj_cbf_stress.py     # head-on stress test of the filter
+PYTHONPATH=. python scripts/render_mj.py         # -> figures/mujoco/
+```
+
+Retraining the policy (Linux or WSL2, NVIDIA GPU): clone `unitree_rl_mjlab`, `pip install -e .` in a Python 3.11 environment, pin `mujoco==3.5.0` and `warp-lang==1.12.0` (the versions pip picks by default break mjlab 1.2.0), `pip install scipy`, then `python scripts/train.py Unitree-Go2-Flat --env.scene.num-envs=4096 --agent.logger tensorboard --agent.max-iterations 3000`. The exported `policy.onnx` lands in `logs/rsl_rl/go2_velocity/<run>/`.
