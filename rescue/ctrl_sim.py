@@ -22,7 +22,7 @@ import numpy as np
 
 from .ctrl_behavior import BehaviorConfig, assign_modes, sample_response, step_survivors
 from .drone_prior import PriorConfig, generate_detections
-from .interfaces import Detection, Observation, RunLog, Site
+from .interfaces import BASE_REWARD, Detection, Observation, RunLog, Site
 from .sim import Go2Params, step_unicycle
 from .stack import R_RESCUE, RescueStack, StackConfig
 from .terrain import speed_at
@@ -51,7 +51,7 @@ def run_episode_ctrl(site: Site, prior_cfg: PriorConfig, stack_cfg: StackConfig,
                      T: float = 600.0, sensor_radius: float = 10.0, p_detect: float = 0.9,
                      sigma_meas: float = 0.5, params: Go2Params | None = None,
                      behavior: BehaviorConfig | None = None, dt: float = 0.1,
-                     rescue_radius: float = R_RESCUE) -> CtrlLog:
+                     rescue_radius: float = R_RESCUE, dwell: dict | None = None) -> CtrlLog:
     p = params or Go2Params()
     beh = behavior or BehaviorConfig()
     rng = np.random.default_rng(seed)
@@ -61,6 +61,8 @@ def run_episode_ctrl(site: Site, prior_cfg: PriorConfig, stack_cfg: StackConfig,
     spos = {s.id: s.pos.astype(float).copy() for s in site.survivors}
     sheading = {s.id: float(brng.uniform(-np.pi, np.pi)) for s in site.survivors}
     pending = set(spos)
+    dwell = dwell or BASE_REWARD.dwell      # s the robot must stay within rescue_radius, by true state
+    held = {s: 0.0 for s in spos}
 
     stack = RescueStack(site, generate_detections(site, prior_cfg, rng), prior_cfg, stack_cfg, p, T,
                         sensor_radius, sigma_meas)
@@ -108,7 +110,11 @@ def run_episode_ctrl(site: Site, prior_cfg: PriorConfig, stack_cfg: StackConfig,
         v = min(v, speed_at(site, pos) * p.speed_scale)
 
         for s in sorted(pending):
-            if np.linalg.norm(spos[s] - pos) <= rescue_radius:
+            if np.linalg.norm(spos[s] - pos) > rescue_radius:
+                held[s] = 0.0
+                continue
+            held[s] += dt
+            if held[s] >= dwell[truth[s].state] - 1e-9:
                 log.rescue_times[s] = t + dt
                 rescued_now.append(spos[s].copy())
                 pending.discard(s)
