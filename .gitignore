@@ -3,3 +3,9 @@ __pycache__/
 .pytest_cache/
 runs/
 *.npz
+
+# Third-party papers (copyright)
+docs/refs
+
+# LaTeX build artifacts (tex/)
+tex/
