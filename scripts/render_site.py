@@ -33,9 +33,9 @@ SIM_LABELS = {"toy": "toy sim", "go2": "Go2 sim"}
 SURFACE, INK, MUTED = "#fcfcfb", "#0b0b0b", "#52514e"
 RUBBLE, HAZARD = "#e6e5e1", "#c3c2b7"
 # Colour plus marker shape, so class never depends on colour alone.
-CLASS_STYLE = {Priority.STABLE: ("#2a78d6", "o", "stable"),
-               Priority.URGENT: ("#1baf7a", "s", "urgent"),
-               Priority.CRITICAL: ("#eb6834", "D", "critical")}
+CLASS_STYLE = {Priority.STABLE: ("#2e9e44", "o", "stable"),
+               Priority.URGENT: ("#e6b000", "s", "urgent"),
+               Priority.CRITICAL: ("#d62728", "D", "critical")}
 UNCERTAINTY_SIGMAS = 2.0   # circle radius in units of the drone's position noise
 HALO = [pe.withStroke(linewidth=2.5, foreground=SURFACE)]
 
