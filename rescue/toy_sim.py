@@ -15,7 +15,7 @@ from .interfaces import (STANDOFF_RADIUS, Detection, Observation, Priority, Regi
 from .terrain import speed_at
 
 
-def generate_site(seed: int, size: float = 100.0) -> Site:
+def generate_site(seed: int, size: float = 100.0, n_survivors: int | None = None) -> Site:
     rng = np.random.default_rng(seed)
 
     def rect(kind, lo, hi):
@@ -27,7 +27,8 @@ def generate_site(seed: int, size: float = 100.0) -> Site:
                     + [rect("hazard", 8, 15) for _ in range(rng.integers(1, 4))])
     hazards = [r for r in regions if r.kind == "hazard"]
     survivors = []
-    for i in range(int(rng.integers(3, 9))):
+    n = int(rng.integers(3, 9))
+    for i in range(n if n_survivors is None else n_survivors):
         while True:
             p = rng.uniform(5, size - 5, 2)
             if not any(h.xmin <= p[0] <= h.xmax and h.ymin <= p[1] <= h.ymax for h in hazards):

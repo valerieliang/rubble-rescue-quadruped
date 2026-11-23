@@ -8,7 +8,7 @@ from __future__ import annotations
 import csv
 import os
 from dataclasses import replace
-from functools import lru_cache
+from functools import lru_cache, partial
 from multiprocessing import Pool
 
 import numpy as np
@@ -25,31 +25,40 @@ else:
 METHODS = {"coverage": baselines.coverage_policy,
            "nearest": baselines.nearest_first_policy,
            "priority": baselines.priority_policy}
+# Retention remedies (search.PriorSearch ``retention``), each on top of the priority policy.
+RETENTION = {"prio_resume": "resume", "prio_region": "region", "prio_keep": "keep",
+             "prio_region_keep": "region,keep", "prio_resume_keep": "resume,keep"}
+METHODS.update({m: partial(baselines.priority_policy, retention=f) for m, f in RETENTION.items()})
+# keep with another region size (sensitivity): keep the track until its k-sigma region is searched
+METHODS.update({f"prio_keep_k{k}": partial(baselines.priority_policy, retention="keep", keep_k=float(k))
+                for k in (1, 3)})
 FIELDS = ["seed", "method", "sigma_pos", "n_false_pos", "p_miss", "p_class_correct",
           "score", "oracle", "norm_score", "time_to_critical", "rescue_rate",
-          "hazard_steps", "survivor_steps", "violation_steps", "violation_rate"]
+          "T", "n_survivors", "hazard_steps", "survivor_steps", "violation_steps", "violation_rate"]
 
 
 @lru_cache(maxsize=None)
-def _site_and_oracle(seed: int, T: float):
-    site = generate_site(seed)
+def _site_and_oracle(seed: int, T: float, n_survivors: int | None = None):
+    site = generate_site(seed) if n_survivors is None else generate_site(seed, n_survivors=n_survivors)
     return site, oracle_score(site, T)
 
 
 def run_job(job: tuple) -> dict:
-    seed, method, cfg, T = job
-    site, oracle = _site_and_oracle(seed, T)
+    seed, method, cfg, T, *rest = job
+    n_surv = rest[0] if rest else None
+    site, oracle = _site_and_oracle(seed, T, n_surv)
     factory = METHODS[method]
     log = run_episode(site, lambda s, d: factory(s, d, cfg, horizon=T), cfg, seed, method, T=T)
     row = summarize(site, log, T, oracle)
     return {"seed": seed, "method": method, "sigma_pos": cfg.sigma_pos,
             "n_false_pos": cfg.n_false_pos, "p_miss": cfg.p_miss,
-            "p_class_correct": cfg.p_class_correct, **row}
+            "p_class_correct": cfg.p_class_correct, "T": T,
+            "n_survivors": len(site.survivors), **row}
 
 
 def run_grid(cfgs: list[PriorConfig], methods: list[str], seeds: range, T: float = 600.0,
-             workers: int | None = None) -> list[dict]:
-    jobs = [(s, m, c, T) for c in cfgs for s in seeds for m in methods]
+             workers: int | None = None, n_survivors: int | None = None) -> list[dict]:
+    jobs = [(s, m, c, T, n_survivors) for c in cfgs for s in seeds for m in methods]
     with Pool(workers) as pool:
         return pool.map(run_job, jobs, chunksize=8)
 
@@ -88,7 +97,8 @@ def paired_diff(rows: list[dict], a: str, b: str, metric: str) -> dict:
     """a - b per site (same seed + config); returns mean, 95% half-width, and fraction of sites a > b."""
     by = {}
     for r in rows:
-        by.setdefault((r["seed"], r["sigma_pos"], r["n_false_pos"], r["p_class_correct"]), {})[r["method"]] = r[metric]
+        by.setdefault((r["seed"], r["sigma_pos"], r["n_false_pos"], r["p_class_correct"], r.get("T"),
+                       r.get("n_survivors")), {})[r["method"]] = r[metric]
     d = np.array([v[a] - v[b] for v in by.values() if a in v and b in v], float)
     d = d[~np.isnan(d)]
     m, h = mean_ci(d)
