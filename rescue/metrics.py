@@ -8,22 +8,30 @@ import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import dijkstra
 
-from .interfaces import (PRIORITY_DECAY, PRIORITY_WEIGHT, STANDOFF_RADIUS, STATE_FACTOR, SURVIVOR_KEEPOUT,
+from .interfaces import (PRIORITY_DECAY, PRIORITY_WEIGHT, STANDOFF_RADIUS, BASE_REWARD, SURVIVOR_KEEPOUT,
                          Priority, RunLog, Site)
 from .terrain import BASE_SPEED, REGION_SPEED, travel_time
 
 
-def _reward(priority: Priority, tau: float, T: float, scale: float = 1.0) -> float:
-    return scale * PRIORITY_WEIGHT[priority] * np.exp(-PRIORITY_DECAY[priority] * tau) if tau <= T else 0.0
+def _model(state_weighted):
+    """False/None: class reward only; True: BASE_REWARD; a RewardModel: that model."""
+    return BASE_REWARD if state_weighted is True else (state_weighted or None)
 
 
-def _scale(s, state_weighted: bool) -> float:
-    return STATE_FACTOR[s.state] if state_weighted else 1.0
+def _reward(s, tau: float, T: float, model=None) -> float:
+    """Reward for reaching survivor ``s`` at time tau (0 after T)."""
+    if tau > T:
+        return 0.0
+    if model is None:
+        return PRIORITY_WEIGHT[s.priority] * float(np.exp(-PRIORITY_DECAY[s.priority] * tau))
+    return model.value(s.priority, s.state, tau)
 
 
 def rescue_score(site: Site, log: RunLog, T: float, state_weighted: bool = False) -> float:
-    """``state_weighted=True`` multiplies each reward by STATE_FACTOR[true state] (control-rate Q4-Q5 runs)."""
-    return sum(_reward(s.priority, log.rescue_times[s.id], T, _scale(s, state_weighted))
+    """``state_weighted=True`` uses BASE_REWARD (reward scaled by the true state); pass a RewardModel to
+    use another one (control-rate Q4-Q5 runs)."""
+    m = _model(state_weighted)
+    return sum(_reward(s, log.rescue_times[s.id], T, m)
                for s in site.survivors if s.id in log.rescue_times)
 
 
@@ -70,15 +78,18 @@ def _grid_times(site: Site, sources: list[np.ndarray], cell: float = 0.5) -> np.
 
 
 def oracle_score(site: Site, T: float, travel=None, standoff: float = STANDOFF_RADIUS,
-                 state_weighted: bool = False) -> float:
+                 state_weighted=False, blind_order=None, return_order: bool = False):
     """Best visiting order with perfect knowledge of positions (brute force, <= 8 survivors).
 
     A survivor counts as rescued at the standoff radius, as in the simulators. Leg times are the
     cheaper of the straight-line estimate and a terrain-aware shortest path (the robot may detour
     around slow terrain), minus the standoff slack at each end, so the oracle is a relaxation:
     it ignores robot dynamics and never does worse than the policies it normalizes.
-    Pass ``travel`` to use straight-line legs only.
+    Pass ``travel`` to use straight-line legs only. ``blind_order``: a RewardModel used to *choose* the
+    visiting order (scored with ``state_weighted``): the ceiling for a planner that lacks the state.
+    ``return_order`` also returns the chosen order.
     """
+    m = _model(state_weighted)
     pts = [site.start] + [s.pos for s in site.survivors]
     n = len(site.survivors)
     straight = travel or partial(travel_time, site)
@@ -93,16 +104,21 @@ def oracle_score(site: Site, T: float, travel=None, standoff: float = STANDOFF_R
             if G is not None:
                 t = min(t, max(0.0, G[i, j] - (slack if i else slack / 2)))
             D[i, j] = t
-    best = 0.0
-    for order in permutations(range(1, n + 1)):
+    pick = _model(blind_order) if blind_order is not None else m
+
+    def total(order, model):
         t, prev, tot = 0.0, 0, 0.0
         for j in order:
-            t += D[prev, j]
             sj = site.survivors[j - 1]
-            tot += _reward(sj.priority, t, T, _scale(sj, state_weighted))
+            t += D[prev, j] + (model.dwell[sj.state] if model is not None else 0.0)
+            tot += _reward(sj, t, T, model)
             prev = j
-        best = max(best, tot)
-    return best
+        return tot
+
+    orders = list(permutations(range(1, n + 1)))
+    best = max(orders, key=lambda o: total(o, pick))
+    val = total(best, m)
+    return (val, best) if return_order else val
 
 
 def time_to_critical(site: Site, log: RunLog, T: float) -> float:
