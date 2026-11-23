@@ -240,7 +240,19 @@ Inference quality at the default config: the full system infers the state with *
 
 With 4 survivors the robot can reach everyone and state information is worth nothing; any gain appears only as the site becomes capacity-limited. Only the oracles' 8-survivor gains exclude zero; the full system's gain (+0.007 +/- 0.009) does not.
 
-**Answer.** Inference works (86% accurate, about 3 s to settle), but what it is worth depends on whether state changes the decision. In the default scene it is worth nothing measurable (-0.003 +/- 0.006), and a perfect-knowledge ceiling of 1-4% shows why. When the robot is capacity-limited and state sets the handling time, the full system's point estimate is positive (+0.007 +/- 0.009) but not distinguishable from zero at 200 sites: it is about three quarters of the in-range oracle's gain (+0.009 +/- 0.009) and a quarter of the global-knowledge bound (+0.028 +/- 0.022). So we cannot claim a measured benefit from inference; the data are consistent with a gain of up to about one point and with none. State information is only valuable before the robot commits to a survivor, and the onboard sensor delivers it too late to capture much of the gain. A noisy drone cue (70% accurate) gives no further detectable gain. The triage effect rests on modelling choices (handling times, decay, self-evacuation) that are not calibrated to people.
+**Replication on fresh sites.** To check whether the 8-survivor gain was real, we reran the same configuration (no drone cue) on 500 new sites (seeds 1000 and up, disjoint from the original 200; `scripts/ctrl_run_q4_triage_large.py`, `runs/q4_triage_large.csv`):
+
+**Table 9b.** State-weighted score minus the no-inference baseline, triage regime, 8 survivors, T = 300 s, no drone cue.
+
+| Sites | n | No-inference score | Full (inference) | Communication oracle (in range) | Global oracle (upper bound) |
+| --- | --- | --- | --- | --- | --- |
+| Original | 200 | 0.590 | +0.007 +/- 0.009 | +0.009 +/- 0.009* | +0.028 +/- 0.022* |
+| Fresh | 500 | 0.580 | +0.003 +/- 0.005 | +0.001 +/- 0.005 | +0.016 +/- 0.014* |
+| Pooled | 700 | 0.583 | +0.004 +/- 0.004 | +0.003 +/- 0.005 | +0.019 +/- 0.012* |
+
+The full system's gain stays within noise on the fresh sites (+0.003 +/- 0.005; it improved on 65 sites and worsened on 67) and is smaller than on the original ones. The in-range oracle's original gain did not replicate (+0.001 +/- 0.005 on the fresh sites), so it was most likely chance. Only the global-knowledge bound is detectably positive in every row, at about 1.5-3 points. The full system again had no clearance violations or hazard entries in any of the 700 episodes.
+
+**Answer.** Inference works (86% accurate, about 3 s to settle), but what it is worth depends on whether state changes the decision. In the default scene it is worth nothing measurable (-0.003 +/- 0.006), and a perfect-knowledge ceiling of 1-4% shows why. When the robot is capacity-limited and state sets the handling time, the full system's point estimate is slightly positive but not distinguishable from zero: +0.007 +/- 0.009 at 200 sites, +0.003 +/- 0.005 on 500 fresh sites, and +0.004 +/- 0.004 pooled over 700 (Table 9b). The global-knowledge bound is detectably positive (+0.019 +/- 0.012 pooled), so a gain exists in principle, and the full system captures at most a small part of it. So we cannot claim a measured benefit from inference; the data are consistent with a gain of up to about half a point and with none. State information is only valuable before the robot commits to a survivor, and the onboard sensor delivers it too late to capture much of the gain. A noisy drone cue (70% accurate) gives no further detectable gain. The triage effect rests on modelling choices (handling times, decay, self-evacuation) that are not calibrated to people.
 
 ### Q5: legibility
 
@@ -309,7 +321,7 @@ Both filters eliminate clearance violations. The closed-loop controller is the d
 
 ## Limitations
 
-Survivors are a crude stand-in for people: three states, constant-speed motion, a fixed response model, and handling times, decay rates and self-evacuation that are modelling choices. The Q4 triage effect is small (+0.007 +/- 0.009, not detectable at 200 sites) and could exist only when the robot is capacity-limited and state sets the handling time; it should not be read as a measured benefit for real triage. Locomotion is a reduced-order unicycle with a measured tracking-error pad, not a full-body Go2 with a learned policy, and the drone detector is parametric noise, not image-derived. The oracle for Q3-Q4 uses survivors' initial positions. The lower-confidence safety result (zero violations at 0.5-0.7) depends on the 1 m clearance and the fixed margins and was checked at three confidence levels and two noise levels, not at every setting. The Q5 observers are simulated people (the learned one is trained on synthetic walkers), not human subjects.
+Survivors are a crude stand-in for people: three states, constant-speed motion, a fixed response model, and handling times, decay rates and self-evacuation that are modelling choices. The Q4 triage effect is small (+0.004 +/- 0.004 pooled over 700 sites, not detectable at 200 or at 500 fresh sites) and could exist only when the robot is capacity-limited and state sets the handling time; it should not be read as a measured benefit for real triage. Locomotion is a reduced-order unicycle with a measured tracking-error pad, not a full-body Go2 with a learned policy, and the drone detector is parametric noise, not image-derived. The oracle for Q3-Q4 uses survivors' initial positions. The lower-confidence safety result (zero violations at 0.5-0.7) depends on the 1 m clearance and the fixed margins and was checked at three confidence levels and two noise levels, not at every setting. The Q5 observers are simulated people (the learned one is trained on synthetic walkers), not human subjects.
 
 ## Layout
 
@@ -335,6 +347,8 @@ scripts/render_site.py  # site and rollout figures
 scripts/render_cases.py # six-panel case-study figure, --stats / --budget
 scripts/run_q3.py, run_q4.py, run_q5.py   # standalone component evaluations
 scripts/ctrl_run_q3.py, ctrl_run_q4.py, ctrl_run_q5.py   # closed-loop Q3-Q5 runs
+scripts/ctrl_run_q4_triage_large.py   # Q4 triage replication on 500 fresh sites
+scripts/render_rollout.py, render_pipeline.py   # filtered vs. unfiltered rollout figure, pipeline diagram
 scripts/ctrl_run_consistency.py   # closed-loop sim vs. the frozen Q1 trends
 scripts/ctrl_stats.py, ctrl_plot.py   # paired-difference tables and figures
 tests/
@@ -354,6 +368,7 @@ PYTHONPATH=. python scripts/render_cases.py --stats --budget   # -> figures/path
 PYTHONPATH=. python scripts/ctrl_run_q3.py 100 8                # Q3 -> runs/q3_*.csv (incl. confidence sweep)
 PYTHONPATH=. python scripts/ctrl_run_q4.py 100 8 default        # Q4 default scene -> runs/q4_*.csv
 PYTHONPATH=. python scripts/ctrl_run_q4.py 200 8 triage         # Q4 triage regime -> runs/q4_triage*.csv
+PYTHONPATH=. python scripts/ctrl_run_q4_triage_large.py 500 8   # triage replication, 500 fresh sites -> runs/q4_triage_large.csv
 PYTHONPATH=. python scripts/ctrl_run_q5.py 100 8                # Q5 (three observers, heading-term sweep) -> runs/q5.csv
 PYTHONPATH=. python scripts/ctrl_run_consistency.py 100 8       # vs. frozen Q1; add a 4th argument 5 for a 5 m sensor
 PYTHONPATH=. python scripts/ctrl_stats.py                       # paired differences with 95% CIs (markdown)

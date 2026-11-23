@@ -86,6 +86,24 @@ def q4():
                   + " | ".join(fmt(*paired(rows, v, "no_state", "norm_state", **w)[:2]) for v in ("full", "oracle", "oracle_global"))
                   + " |")
         print()
+    triage_replication()
+
+
+def triage_replication():
+    """Original 200 triage sites vs. the fresh 500 (runs/q4_triage_large.csv) vs. both pooled, no drone cue."""
+    if not (os.path.exists("runs/q4_triage.csv") and os.path.exists("runs/q4_triage_large.csv")):
+        return
+    old = [r for r in load_rows("runs/q4_triage.csv") if r.get("p_state_cue") == 0.0]
+    new = load_rows("runs/q4_triage_large.csv")
+    print("### Q4, triage regime replication (8 survivors, T = 300 s, no drone cue)\n")
+    print("| sites | n | no_state score | full - no_state | oracle - no_state | oracle_global - no_state |")
+    print("|---|---|---|---|---|---|")
+    for name, rows in (("original", old), ("fresh", new), ("pooled", old + new)):
+        m0, n0 = mean(rows, "no_state", "norm_state")
+        print(f"| {name} | {n0} | {m0:.3f} | "
+              + " | ".join(fmt(*paired(rows, v, "no_state", "norm_state")[:2]) for v in ("full", "oracle", "oracle_global"))
+              + " |")
+    print()
 
 
 if __name__ == "__main__":
