@@ -20,7 +20,7 @@ import numpy as np
 
 from .ctrl_behavior import MotionTracker, StateBelief
 from .drone_prior import PriorConfig
-from .interfaces import PRIORITY_DECAY, PRIORITY_WEIGHT, Detection, Observation, ResponseState, Site
+from .interfaces import PRIORITY_DECAY, PRIORITY_WEIGHT, REWARDS, Detection, Observation, ResponseState, Site
 from .ctrl_mpc import ApproachMPC, TerrainGrid, lookahead
 from .safety import CBFFilter, SafetyParams
 from .search import PriorSearch
@@ -34,9 +34,12 @@ class StackConfig:
     use_cbf: bool = True
     infer_state: bool = True
     comm_oracle: bool = False
+    oracle_global: bool = False      # diagnostic upper bound: z of every drone track revealed at t=0
     controller: str = "closed_loop"  # "closed_loop": ctrl_mpc + safety.py;  "components": mpc.ApproachController + cbf.SafetyFilter
     hazard_aware_planner: bool = True   # False: planner/MPC ignore hazards (stress test for the filter)
+    reward: str = "base"             # key of interfaces.REWARDS: how the hidden state enters the reward
     legibility: float = 0.0          # lambda; 0 = predictable (no legibility term)
+    legibility_heading: float = 0.0  # weight of the heading-legibility term (motion direction points at the goal)
     obs_beta: float = 0.7            # observer temperature assumed by the legibility term
     # safety
     conf_p: float = 0.9
@@ -51,6 +54,8 @@ class StackConfig:
     prompt_gap: float = 3.0
     max_prompts: int = 3
     motion_window: float = 5.0
+    avg_meas: bool = False           # fuse all 10 Hz detections of the last second (mean, sigma_meas/sqrt(n)), not one
+    hint_acc: float = 0.7            # accuracy the robot assumes for the drone's state cue
     reliability: float = 0.8         # q the robot assumes when interpreting prompt responses
     walk_speed: float = 0.3          # v0 the robot assumes for mobile survivors
 
@@ -58,8 +63,10 @@ class StackConfig:
 VARIANTS = {
     "full": StackConfig(),
     "no_cbf": StackConfig(use_cbf=False),                                # baseline 3
+    "full_far": StackConfig(prompt_range=10.0, motion_window=3.0),       # infer earlier: prompt at sensing range
     "no_state": StackConfig(infer_state=False),                          # baseline 4
     "oracle": StackConfig(infer_state=False, comm_oracle=True),          # baseline 5
+    "oracle_global": StackConfig(infer_state=False, comm_oracle=True, oracle_global=True),  # upper bound on the value of z
 }
 
 
@@ -73,15 +80,16 @@ class PromptRequest:
 class StateAwareSearch(PriorSearch):
     """PriorSearch whose score is also scaled by a per-track weight (the inferred state factor)."""
 
-    def __init__(self, *args, weight_fn=None, **kw):
+    def __init__(self, *args, weight_fn=None, dwell_fn=None, **kw):
         super().__init__(*args, **kw)
-        self.weight_fn = weight_fn or (lambda t: 1.0)
+        self.dwell_fn = dwell_fn or (lambda t: 0.0)
+        self.weight_fn = weight_fn or (lambda t, arrive: 1.0)
 
-    def select(self, obs: Observation, sigma_floor: float):
+    def select(self, obs: Observation, sigma_floor: float, sigmas=None):
         pos = np.asarray(obs.robot_pos, float)
         for p in obs.rescued:
             self.belief.remove_near(p)
-        self.belief.update(pos, obs.sensor_radius, list(obs.detected))
+        self.belief.update(pos, obs.sensor_radius, list(obs.detected), sigmas)
         for t in self.belief.tracks:
             t.sigma = max(t.sigma, sigma_floor)
         best, best_score = None, -np.inf
@@ -93,8 +101,8 @@ class StateAwareSearch(PriorSearch):
             if arrive > self.horizon:
                 continue
             if self.mode == "priority":
-                score = (t.r * PRIORITY_WEIGHT[t.priority] * self.weight_fn(t)
-                         * np.exp(-PRIORITY_DECAY[t.priority] * arrive) / (tau + 1.0) ** self.dist_exp)
+                score = (t.r * PRIORITY_WEIGHT[t.priority] * self.weight_fn(t, arrive)
+                         * np.exp(-PRIORITY_DECAY[t.priority] * arrive) / (tau + self.dwell_fn(t) + 1.0) ** self.dist_exp)
             else:
                 score = -tau
             if score > best_score:
@@ -107,19 +115,25 @@ class RescueStack:
                  params, T: float = 600.0, sensor_radius: float = 10.0, sigma_meas: float = 0.5):
         self.site, self.cfg, self.params, self.sigma_meas = site, cfg, params, sigma_meas
         self.search = StateAwareSearch(detections, prior_cfg, site.bounds, partial(travel_time, site),
-                                       sensor_radius, site.start, T, weight_fn=self._state_weight)
+                                       sensor_radius, site.start, T, weight_fn=self._state_weight, dwell_fn=self._expected_dwell)
         self.search.belief.sigma_meas = sigma_meas
+        self.states: dict[int, StateBelief] = {}
+        for tr, d in zip(self.search.belief.tracks, detections):
+            if d.state_hint is not None and (cfg.infer_state or cfg.comm_oracle):
+                self.states.setdefault(id(tr), StateBelief()).update_hint(d.state_hint, cfg.hint_acc)
+        self._init_ids = [(id(tr), d.source_id) for tr, d in zip(self.search.belief.tracks, detections)
+                          if d.source_id is not None]
         self.safety = SafetyParams(conf_p=cfg.conf_p, d_clear=cfg.d_clear, eps_track=cfg.eps_track,
                                    cp_offset=cfg.cp_offset, w_max=params.max_turn_rate)
         self.cbf = CBFFilter(self.safety)
         self.mpc = ApproachMPC(w_max=params.max_turn_rate)
         self.grid = TerrainGrid(site)
         self.hazards = [r for r in site.regions if r.kind == "hazard"]
-        self.states: dict[int, StateBelief] = {}
         self.motion: dict[int, MotionTracker] = {}
         self.n_prompts: dict[int, int] = {}
         self.last_prompt: dict[int, float] = {}
         self.revealed: set[int] = set()
+        self._det_buf: list[Detection] = []
         self.target = None
         self.target_key: int | None = None
         self.approach_start = site.start.astype(float).copy()
@@ -165,10 +179,13 @@ class RescueStack:
     def _sb(self, track) -> StateBelief:
         return self.states.setdefault(id(track), StateBelief())
 
-    def _state_weight(self, track) -> float:
-        if not (self.cfg.infer_state or self.cfg.comm_oracle):
-            return 1.0
-        return self._sb(track).expected_factor()
+    def _expected_dwell(self, track) -> float:
+        return self._sb(track).expected_dwell(REWARDS[self.cfg.reward])
+
+    def _state_weight(self, track, arrive: float) -> float:
+        """Expected state-dependent reward factor. Without inference or an oracle the belief stays at its
+        prior, so the no-inference baseline plans with the prior-expected reward (the best it can do)."""
+        return self._sb(track).expected_ratio(track.priority, arrive, REWARDS[self.cfg.reward])
 
     def _legibility_weight(self, track) -> float:
         """Legibility only matters to a survivor who can watch the robot: mobile fully, trapped partly."""
@@ -180,8 +197,15 @@ class RescueStack:
     def perceive(self, t: float, pos, detected) -> list[PromptRequest]:
         """10 Hz: record motion samples, decide which survivors to prompt / reveal."""
         reqs: list[PromptRequest] = []
+        if self.cfg.avg_meas:
+            self._det_buf += list(detected)
         if not (self.cfg.infer_state or self.cfg.comm_oracle):
             return reqs
+        if self.cfg.oracle_global and self._init_ids:
+            for key, sid in self._init_ids:
+                self.revealed.add(key)
+                reqs.append(PromptRequest(key, sid, "reveal"))
+            self._init_ids = []
         pos = np.asarray(pos, float)
         for d in detected:
             tr = self._match(d.pos)
@@ -248,7 +272,16 @@ class RescueStack:
         self.keepout += [np.asarray(q, float) for q in obs.rescued]
         if self.cfg.infer_state:
             self._motion_updates(pos)
-        target, wp = self.search.select(obs, self.cfg.sigma_floor)
+        sigmas = None
+        if self.cfg.avg_meas and self._det_buf:
+            obs, sigmas = self._averaged(obs)
+        self._det_buf = []
+        prev = self.target
+        target, wp = self.search.select(obs, self.cfg.sigma_floor, sigmas)
+        # Finish the survivor being handled: leaving mid-dwell would waste the time already spent there.
+        if (prev is not None and target is not prev and any(t is prev for t in self.search.belief.tracks)
+                and prev.confirmed and np.linalg.norm(pos - prev.mean) <= R_RESCUE + 0.5):
+            target, wp = prev, prev.mean
         key = id(target) if target is not None else None
         if key != self.target_key:
             self.approach_start = pos.copy()
@@ -263,6 +296,26 @@ class RescueStack:
             self.orbit += 0.35
         goal = self.goal(pos)
         self.path = self.grid.path(pos, goal) if self.cfg.hazard_aware_planner else np.array([pos, goal])
+
+    def _averaged(self, obs: Observation):
+        """Cluster the last second's raw detections; one mean detection per cluster with std sigma_meas/sqrt(n)."""
+        gate = max(2.0, 3.0 * self.sigma_meas + 1.0)
+        # raw detections of a survivor rescued within this second would re-create the track just removed
+        buf = [d for d in self._det_buf
+               if all(np.linalg.norm(d.pos - np.asarray(q, float)) > 3.0 + 3.0 * self.sigma_meas for q in obs.rescued)]
+        if not buf:
+            return Observation(obs.t, obs.robot_pos, obs.sensor_radius, (), obs.rescued), []
+        clusters: list[list[Detection]] = []
+        for d in buf:
+            for c in clusters:
+                if np.linalg.norm(np.mean([x.pos for x in c], axis=0) - d.pos) < gate:
+                    c.append(d)
+                    break
+            else:
+                clusters.append([d])
+        dets = tuple(Detection(np.mean([x.pos for x in c], axis=0), c[-1].priority, c[-1].source_id) for c in clusters)
+        sig = [self.sigma_meas / np.sqrt(len(c)) for c in clusters]
+        return Observation(obs.t, obs.robot_pos, obs.sensor_radius, dets, obs.rescued), sig
 
     def boundary(self, track) -> float:
         return self.cbf.region_radius(track.sigma)
@@ -298,14 +351,15 @@ class RescueStack:
             discs = [(tr.mean, self.boundary(tr)) for tr in tracks if tr is not self.target]
             discs += [(q, self.cbf.region_radius(self.cfg.sigma_floor)) for q in self.keepout]
         leg = None
-        if self.cfg.legibility > 0 and self.target is not None:
+        if (self.cfg.legibility > 0 or self.cfg.legibility_heading > 0) and self.target is not None:
             near = [tr for tr in tracks if np.linalg.norm(tr.mean - pos) < 25.0]
             if any(tr is self.target for tr in near) and len(near) > 1:
                 goals = np.array([tr.mean for tr in near])
                 k = next(i for i, tr in enumerate(near) if tr is self.target)
                 lam = self.cfg.legibility * self._legibility_weight(self.target)
-                if lam > 0:
-                    leg = (goals, k, self.approach_start, lam, self.cfg.obs_beta)
+                lam_h = self.cfg.legibility_heading * self._legibility_weight(self.target)
+                if lam > 0 or lam_h > 0:
+                    leg = (goals, k, self.approach_start, lam, self.cfg.obs_beta, lam_h)
         mpc_hazards = self.hazards if self.cfg.hazard_aware_planner else ()
         u_nom = np.array(self.mpc.solve(pos, heading, v_cap, wp, mpc_hazards, discs, leg))
         if not self.cfg.use_cbf:

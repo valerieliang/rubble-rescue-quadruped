@@ -44,19 +44,21 @@ class Belief:
                        for d in detections]
 
     def update(self, robot_pos: np.ndarray, sensor_radius: float,
-               detected: list[Detection]) -> None:
-        """Bayes update with one observation (footprint + any detections inside it)."""
+               detected: list[Detection], sigmas: list[float] | None = None) -> None:
+        """Bayes update with one observation (footprint + any detections inside it).
+        ``sigmas``: optional per-detection measurement std (e.g. a mean of several raw detections)."""
         robot_pos = np.asarray(robot_pos, float)
         matched: set[int] = set()
-        for d in detected:
+        for k, d in enumerate(detected):
+            sm = self.sigma_meas if sigmas is None else sigmas[k]
             i = self._nearest_track(d.pos, robot_pos, sensor_radius, matched)
             if i is None:   # drone missed this survivor: start a confirmed track
-                self.tracks.append(Track(np.array(d.pos, float), self.sigma_meas, 1.0,
+                self.tracks.append(Track(np.array(d.pos, float), sm, 1.0,
                                          d.priority, confirmed=True))
                 matched.add(len(self.tracks) - 1)
                 continue
             matched.add(i)
-            self._positive_update(self.tracks[i], d)
+            self._positive_update(self.tracks[i], d, sm)
         for i, t in enumerate(self.tracks):
             if i not in matched:
                 self._negative_update(t, robot_pos, sensor_radius)
@@ -80,9 +82,9 @@ class Belief:
                 best, best_d = i, d
         return best
 
-    def _positive_update(self, t: Track, d: Detection) -> None:
+    def _positive_update(self, t: Track, d: Detection, sigma_meas: float | None = None) -> None:
         # Kalman fuse (isotropic): prior N(mean, s^2) with measurement N(d.pos, sm^2).
-        s2, m2 = t.sigma**2, self.sigma_meas**2
+        s2, m2 = t.sigma**2, (self.sigma_meas if sigma_meas is None else sigma_meas)**2
         k = s2 / (s2 + m2)
         t.mean = t.mean + k * (np.asarray(d.pos, float) - t.mean)
         t.sigma = float(np.sqrt((1 - k) * s2))
