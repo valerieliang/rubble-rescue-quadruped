@@ -42,6 +42,7 @@ class StackConfig:
     forget_stale_tracks: bool = True    # missed detections lower a confirmed track's existence too (False: the
                                         # old belief, where the robot could wait for good at the standoff of a
                                         # survivor who had walked away; sites 16 and 18 at sigma_meas 1 m)
+    retention: str = ""              # search.PriorSearch retention remedies ("keep", "region", "resume"; "" = off)
     reward: str = "base"             # key of interfaces.REWARDS: how the hidden state enters the reward
     legibility: float = 0.0          # lambda; 0 = predictable (no legibility term)
     legibility_heading: float = 0.0  # weight of the heading-legibility term (motion direction points at the goal)
@@ -94,9 +95,13 @@ class StateAwareSearch(PriorSearch):
         pos = np.asarray(obs.robot_pos, float)
         for p in obs.rescued:
             self.belief.remove_near(p)
+        if self.obs_map is not None:
+            self.obs_map.mark(pos, obs.sensor_radius)
         self.belief.update(pos, obs.sensor_radius, list(obs.detected), sigmas)
         for t in self.belief.tracks:
             t.sigma = max(t.sigma, sigma_floor)
+        if "keep" in self.flags:
+            self._retain()
         best, best_score = None, -np.inf
         for t in self.belief.tracks:
             if t.r < self.r_min:
@@ -112,7 +117,14 @@ class StateAwareSearch(PriorSearch):
                 score = -tau
             if score > best_score:
                 best, best_score = t, score
-        return best, (best.mean if best is not None else self.coverage.waypoint(pos))
+        if best is not None:
+            self._in_fallback = False
+            return best, self._target_point(best, pos)
+        if self.obs_map is None:
+            return best, self.coverage.waypoint(pos)
+        wp = self._fallback(pos)
+        self._in_fallback = True
+        return best, wp
 
 
 class RescueStack:
@@ -120,7 +132,8 @@ class RescueStack:
                  params, T: float = 600.0, sensor_radius: float = 10.0, sigma_meas: float = 0.5):
         self.site, self.cfg, self.params, self.sigma_meas = site, cfg, params, sigma_meas
         self.search = StateAwareSearch(detections, prior_cfg, site.bounds, partial(travel_time, site),
-                                       sensor_radius, site.start, T, weight_fn=self._state_weight, dwell_fn=self._expected_dwell)
+                                       sensor_radius, site.start, T, weight_fn=self._state_weight, dwell_fn=self._expected_dwell,
+                                       retention=cfg.retention)
         self.search.belief.sigma_meas = sigma_meas
         self.search.belief.forget_confirmed = cfg.forget_stale_tracks
         self.states: dict[int, StateBelief] = {}
