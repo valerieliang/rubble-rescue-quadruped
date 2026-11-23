@@ -20,7 +20,7 @@ import numpy as np
 
 from .drone_prior import PriorConfig
 from .interfaces import Priority, Region, ResponseState, Site, Survivor
-from .legibility import CostObserver, HeadingObserver, identification_time
+from .legibility import CostObserver, HeadingObserver, LearnedObserver, identification_time
 from .sim import Go2Params, step_unicycle
 from .stack import R_RESCUE, RescueStack, StackConfig
 
@@ -90,7 +90,7 @@ def run_approach(seed: int, stack_cfg: StackConfig, state: ResponseState = Respo
             break
     path = np.array(path)
     rng = np.random.default_rng(seed + 99)
-    obs = {"cost": CostObserver(), "heading": HeadingObserver()}
+    obs = {"cost": CostObserver(), "heading": HeadingObserver(), "learned": LearnedObserver()}
     ident, mean_p = {}, {}
     for name, o in obs.items():
         post = o.posterior(path, start, goals, rng)

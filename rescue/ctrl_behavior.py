@@ -23,7 +23,7 @@ from enum import IntEnum
 
 import numpy as np
 
-from .interfaces import STATE_FACTOR, Priority, ResponseState, Site, Survivor
+from .interfaces import PRIORITY_DECAY, STATE_FACTOR, Priority, ResponseState, Site, Survivor
 from .toy_sim import generate_site
 
 
@@ -137,6 +137,10 @@ class StateBelief:
         ll = -0.5 * np.sum((np.asarray(vel_radial, float) - means) ** 2, axis=1) / sigma_v**2
         self._mul(np.exp(ll - ll.max()))
 
+    def update_hint(self, hint: int, acc: float) -> None:
+        """Drone state cue: correct with probability ``acc``, otherwise uniform over the other two states."""
+        self._mul(np.array([acc if int(h[0]) == hint else (1.0 - acc) / 2.0 for h in HYPOTHESES]))
+
     def reveal(self, z: ResponseState) -> None:
         """Communication oracle (baseline 5): the survivor's z becomes known."""
         self._mul(np.array([1.0 if h[0] == z else 0.0 for h in HYPOTHESES]))
@@ -152,6 +156,24 @@ class StateBelief:
 
     def map_mode(self) -> Mode:
         return Mode(int(np.argmax(self.p_mode())))
+
+    def expected_ratio(self, priority: Priority, arrive: float, model) -> float:
+        """E_z[ reward(z, arrive + dwell_z) ] / (w_c * exp(-lambda_c * arrive)): the state-dependent part of
+        the expected reward of reaching this survivor at ``arrive`` (the class part is applied by the search)."""
+        ps = self.p_state()
+        lam = PRIORITY_DECAY[priority]
+        out = 0.0
+        for z, f in model.factor.items():
+            done = arrive + model.dwell[z]
+            if z == ResponseState.MOBILE and done > model.evac_time:
+                continue
+            out += ps[int(z)] * f * float(np.exp(-lam * ((model.decay_mult[z] - 1.0) * arrive
+                                                        + model.decay_mult[z] * model.dwell[z])))
+        return out
+
+    def expected_dwell(self, model) -> float:
+        ps = self.p_state()
+        return float(sum(ps[int(z)] * d for z, d in model.dwell.items()))
 
     def expected_factor(self) -> float:
         ps = self.p_state()

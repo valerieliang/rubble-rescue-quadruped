@@ -138,8 +138,18 @@ class ApproachMPC:
             d = np.hypot(x - c[0], y - c[1])
             cost += self.w_clear * np.sum(np.maximum(0.0, R + 0.3 - d) ** 2, 1)
         if leg is not None:
-            goals, k, S, lam, beta = leg
+            goals, k, S, lam, beta, *rest = leg
+            lam_h = rest[0] if rest else 0.0
             Q = np.stack([x, y], -1)
-            cost += lam * self.dt * np.sum(-log_prob_goal(Q, S, goals, k, beta), 1)
+            if lam > 0:
+                cost += lam * self.dt * np.sum(-log_prob_goal(Q, S, goals, k, beta), 1)
+            if lam_h > 0:
+                # heading legibility: -log P(G* | motion direction), the HeadingObserver's likelihood form
+                to_g = goals[None, None] - Q[:, :, None, :]
+                cos = (to_g[..., 0] * np.cos(th)[..., None] + to_g[..., 1] * np.sin(th)[..., None]) / (
+                    np.linalg.norm(to_g, axis=-1) + 1e-9)
+                sc = 4.0 * cos
+                lse = np.log(np.sum(np.exp(sc - sc.max(-1, keepdims=True)), -1)) + sc.max(-1)
+                cost += lam_h * self.dt * np.sum(lse - sc[..., k], 1)
         i = int(np.argmin(cost))
         return float(self.vf[i] * v_cap), float(self.w1[i])

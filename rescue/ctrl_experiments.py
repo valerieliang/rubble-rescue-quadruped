@@ -24,7 +24,7 @@ import numpy as np
 from .ctrl_behavior import BehaviorConfig, Mode, assign_modes, make_site
 from .ctrl_sim import run_episode_ctrl
 from .drone_prior import PriorConfig
-from .interfaces import ResponseState
+from .interfaces import REWARDS, ResponseState
 from .metrics import oracle_score, rescue_rate, rescue_score, time_to_critical
 from .stack import R_RESCUE, VARIANTS, StackConfig
 
@@ -49,9 +49,9 @@ def usable_seeds(n: int, start: int = 0) -> list[int]:
 
 
 @lru_cache(maxsize=None)
-def _oracles(seed: int, n_survivors, frac_mobile, T: float):
+def _oracles(seed: int, n_survivors, frac_mobile, T: float, reward: str = "base"):
     site = make_site(seed, n_survivors, frac_mobile)
-    return (oracle_score(site, T, standoff=R_RESCUE, state_weighted=True),
+    return (oracle_score(site, T, standoff=R_RESCUE, state_weighted=REWARDS[reward]),
             oracle_score(site, T, standoff=R_RESCUE))
 
 
@@ -97,9 +97,11 @@ def run_ctrl_job(job: dict) -> dict:
     cfg = replace(VARIANTS[variant], **stack_kw)
     site = make_site(seed, ov.get("n_survivors"), ov.get("frac_mobile"))
     sim_kw = {k: v for k, v in ov.items() if k in SIM_KEYS}
-    log = run_episode_ctrl(site, prior, cfg, seed, variant, T=T, behavior=beh, **sim_kw)
-    o_state, o_class = _oracles(seed, ov.get("n_survivors"), ov.get("frac_mobile"), T)
-    sw = rescue_score(site, log, T, state_weighted=True)
+    log = run_episode_ctrl(site, prior, cfg, seed, variant, T=T, behavior=beh,
+                           dwell=REWARDS[ov.get("reward", "base")].dwell, **sim_kw)
+    rw = ov.get("reward", "base")
+    o_state, o_class = _oracles(seed, ov.get("n_survivors"), ov.get("frac_mobile"), T, rw)
+    sw = rescue_score(site, log, T, state_weighted=REWARDS[rw])
     cw = rescue_score(site, log, T)
     row = {"seed": seed, "variant": variant, "label": label, **ov,
            "n_survivors_site": len(site.survivors),
@@ -149,12 +151,14 @@ def load_rows(path: str) -> list[dict]:
 
 def run_approach_job(job: dict) -> dict:
     from .approach import run_approach
-    cfg = replace(StackConfig(), legibility=job["lam"], obs_beta=job.get("obs_beta", 0.7))
+    cfg = replace(StackConfig(), legibility=job["lam"], obs_beta=job.get("obs_beta", 0.7),
+                  legibility_heading=job.get("lam_head", 0.0))
     r = run_approach(job["seed"], cfg, ResponseState(job["state"]), bool(job.get("blind", False)),
                      n_distractors=job.get("n_distractors", 1))
     return {**job, "t_total": r.t_total, "path_len": r.path_len, "reached": int(r.reached),
-            "ident_cost": r.ident["cost"], "ident_heading": r.ident["heading"],
-            "mean_p_cost": r.mean_p["cost"], "mean_p_heading": r.mean_p["heading"]}
+            "ident_cost": r.ident["cost"], "ident_heading": r.ident["heading"], "ident_learned": r.ident["learned"],
+            "mean_p_cost": r.mean_p["cost"], "mean_p_heading": r.mean_p["heading"],
+            "mean_p_learned": r.mean_p["learned"]}
 
 
 def run_approach_jobs(jobs: list[dict], workers: int | None = None) -> list[dict]:
