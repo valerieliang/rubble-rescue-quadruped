@@ -165,6 +165,23 @@ Both methods use the same prior; they differ only in whether the triage class se
 - **It still needs accurate labels.** At 80% labels none of the settings is positive and detectable, including the 1/4/16 weights (+0.012 +/- 0.029). This matches Table 4.
 - **Reading it:** this is a sensitivity analysis of an assumed reward, not evidence about real triage. It says priority ordering pays only if the class weight is large enough to survive the time decay and the drone's labels are about 90%+ accurate; with the default reward it does neither. Only two of the eight settings are detectable at 100% labels on both site sets, and with 16 settings some stars are expected by chance, so treat the pattern, not any single cell, as the finding.
 
+**What if the class weights are made bigger?** `scripts/run_reward_weights.py` raises the stable/urgent/critical weights from 1/2/4 to 1/4/16, 1/8/64 and 1/16/256 (default decay), in the default scene (3-8 survivors, T = 600 s) and in a capacity-limited one (8 survivors, T = 300 s), at 80, 90 and 100% class accuracy, 160 sites per cell.
+
+**Table 4c.** Priority minus nearest-first, score (time to critical in s in brackets), default scene; `*` = interval excludes zero (uncorrected; 12 cells).
+
+| Weights | 80% labels | 90% labels | 100% labels |
+| --- | --- | --- | --- |
+| 1/2/4 (default) | +0.013 +/- 0.014 (-10 +/- 15) | +0.018 +/- 0.014* (-10 +/- 15) | +0.026 +/- 0.015* (-18 +/- 14*) |
+| 1/4/16 | +0.009 +/- 0.028 (-12 +/- 22) | +0.034 +/- 0.026* (-25 +/- 19*) | +0.057 +/- 0.025* (-32 +/- 20*) |
+| 1/8/64 | +0.011 +/- 0.036 (-9 +/- 23) | +0.046 +/- 0.034* (-29 +/- 21*) | +0.091 +/- 0.033* (-39 +/- 23*) |
+| 1/16/256 | +0.012 +/- 0.042 (0 +/- 24) | +0.052 +/- 0.041* (-21 +/- 23) | +0.105 +/- 0.039* (-35 +/- 24*) |
+
+- **The gain scales with the weight and with label accuracy.** At 100% labels it grows from +0.026 to +0.105; at 90% from +0.018 to +0.052; at 80% it stays null at every weight (about +0.01, intervals of +/-0.03-0.04). Bigger weights amplify the drone's label errors as much as its correct labels, so at 80% they cancel (case F in Figure 5 is the same failure). In the capacity-limited scene the pattern is the same and slightly larger (+0.116 +/- 0.036 at 1/16/256 and 100% labels).
+- **Critical survivors are reached 30-40 s sooner** at 100% labels once the weights exceed the decay (1/4/16 and above), in both scenes.
+- **Nearest-first falls from 0.72 to 0.59** as the weights grow, because the score is normalized by an oracle that now cares mostly about critical survivors, which nearest-first ignores; priority ordering is the only method that follows the reward.
+- **Retention is independent of the weights.** The `keep` gain over plain priority is +0.03 to +0.05 in the default scene at every weight and accuracy (Table 5c's effect), so the two results are separate.
+- **Reading it:** if triage class really is worth several times more than the time decay erodes, priority ordering earns 5-10 points of score at 90-100% labels. Whether real triage reward is shaped like that is not something this simulator can tell us.
+
 The Go2 and toy simulators give near-identical numbers. Hazards are slow but traversable, and robot pose is true pose.
 
 ### Case studies: why survivors are lost
@@ -597,7 +614,7 @@ scripts/ctrl_run_q3.py, ctrl_run_q4.py, ctrl_run_q5.py   # closed-loop Q3-Q5 run
 scripts/ctrl_run_q4_triage_large.py   # Q4 triage replication on 500 fresh sites
 scripts/run_retention.py, run_retention_checks.py, plot_retention.py   # track-retention ablation, fresh-site / region-size / false-positive checks, figure
 scripts/ctrl_run_retention.py   # retention in the closed-loop stack
-scripts/run_regime.py, run_reward_shape.py   # Q2 priority vs. nearest-first over horizon / survivor count, and over the class reward shape
+scripts/run_regime.py, run_reward_shape.py, run_reward_weights.py   # Q2 priority vs. nearest-first over horizon / survivor count, reward decay, and class weights
 scripts/mj_sudden_threat.py   # sudden close-range threat on both plants
 scripts/profile_layers.py   # per-layer compute timing
 scripts/render_rollout.py, render_pipeline.py   # filtered vs. unfiltered rollout figure, pipeline diagram
