@@ -2,9 +2,9 @@
 
 Usage: PYTHONPATH=. python scripts/ctrl_run_q5.py [n_scenarios] [workers]
 
-Each scenario is one approach to a target among distractors on open ground, scored by two simulated
-observers (cost-model and heading-extrapolation). Sweeps the legibility weight lambda for each true
-survivor state, with the state-weighted planner (weight by state) and a state-blind one (full weight
+Each scenario is one approach to a target among distractors on open ground, scored by three simulated
+observers (cost-model, heading-extrapolation, and a learned classifier). Sweeps the legibility weight lambda for each true
+survivor state (plus a heading-legibility sweep, ``tag == "heading_term"``), with the state-weighted planner (weight by state) and a state-blind one (full weight
 whatever the state), plus a two-distractor variant.
 """
 import os
@@ -27,6 +27,10 @@ def main():
                     if lam == 0 and blind:
                         continue
                     jobs.append({"seed": seed, "lam": lam, "state": int(state), "blind": int(blind)})
+        for lam_h in (1, 2, 3, 5):                       # heading-legibility term, alone and with the cost term
+            for lam in (0, 300):
+                jobs.append({"seed": seed, "lam": lam, "lam_head": lam_h, "state": int(ResponseState.MOBILE),
+                             "blind": 0, "tag": "heading_term"})
         for lam in (0, 300):
             jobs.append({"seed": seed, "lam": lam, "state": int(ResponseState.MOBILE), "blind": 0,
                          "n_distractors": 2, "tag": "two_distractors"})
