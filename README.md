@@ -589,22 +589,28 @@ Until here the Go2 walked on a flat plane and rubble was only a speed cap in the
 | Hazard | flat-trained | 34 / 200 | 0.426 m | 0.847 m | 0.952 m |
 | Hazard | rough-trained | 9 / 200 | 0.284 m | 0.801 m | 0.920 m |
 
-**Table 20.** Q3 on rubble (`scripts/mj_run_q3_rubble.py`, 40 sites, sigma_meas 0.5 m, confidence 0.7, pad 0.25 m; an episode ends when the robot falls).
+**Table 20.** Q3 on rubble (`scripts/mj_run_q3_rubble.py`, 100 sites, sigma_meas 0.5 m, confidence 0.7, pad 0.25 m; an episode ends when the robot falls).
 
 | Plant | Variant | Score | Rescue rate | Episodes with clearance violation | Min. distance (m) | Falls |
 | --- | --- | --- | --- | --- | --- | --- |
-| Unicycle | full | 0.775 | 0.93 | 0.00 | 2.42 | - |
-| Unicycle | no filter | 0.788 | 0.93 | 0.50 | 0.05 | - |
-| Go2, flat ground | full | 0.717 | 0.93 | 0.00 | 2.41 | 0 |
-| Go2, rubble, flat policy | full | 0.543 | 0.68 | 0.00 | 2.25 | 19 |
-| Go2, rubble, flat policy | no filter | 0.560 | 0.68 | 0.50 | 0.04 | 22 |
-| Go2, rubble, rough policy | full | 0.689 | 0.86 | 0.00 | 2.43 | 6 |
-| Go2, rubble, rough policy | no filter | 0.697 | 0.88 | 0.55 | 0.04 | 6 |
+| Unicycle | full | 0.738 | 0.90 | 0.00 | 2.39 | - |
+| Unicycle | no filter | 0.749 | 0.92 | 0.59 | 0.04 | - |
+| Go2, flat ground | full | 0.674 | 0.91 | 0.00 | 2.41 | 0 |
+| Go2, flat ground | no filter | 0.685 | 0.91 | 0.59 | 0.03 | 0 |
+| Go2, rubble, flat policy | full | 0.558 | 0.71 | 0.00 | 2.35 | 42 |
+| Go2, rubble, flat policy | no filter | 0.552 | 0.70 | 0.49 | 0.03 | 46 |
+| Go2, rubble, rough policy | full | 0.670 | 0.89 | 0.00 | 2.41 | 0 |
+| Go2, rubble, rough policy | no filter | 0.682 | 0.90 | 0.61 | 0.01 | 0 |
 
-- **Safety holds on rubble.** With the filter: no clearance violations and no hazard entries (closest approach 2.43 m with the rough policy); without it 55% of episodes violated.
-- **The flat-trained policy is not enough on rubble:** it fell in 19 of 40 filtered episodes and its 95% tracking error (0.59 m) is more than twice the 0.25 m pad. The rough-trained policy fell in 6 of 40 (95% error 0.36 m, still above the pad). The pad was left at 0.25 m since the filtered episodes had no violations, because the fixed margins keep the robot about 2.4 m from survivors, as in Q3.
-- **Falls are the cost.** Paired by site, the rough-policy Go2 scores 0.086 +/- 0.046 below the unicycle (flat ground: 0.058 +/- 0.017); the filter's own cost is -0.008 +/- 0.013. A fall ends an episode, so falling sites lose their remaining rescues and their safety statistics cover only the time before the fall. Hazard ground is still hard (9 of 200 falls and 0.80 m error) but the filter keeps the robot out of it.
-- This is 40 sites at one noise level and one pad, a first check on rubble.
+- **Safety holds on rubble.** With the filter: no clearance violations and no hazard entries in 100 episodes (closest approach 2.41 m with the rough policy); without it 61% of episodes violated.
+- **The flat-trained policy is not enough on rubble:** it fell in 42 of 100 filtered episodes (rescue rate 0.71) and its 95% tracking error (0.59 m) is more than twice the 0.25 m pad. The rough-trained policy did not fall in any of the 200 episodes. Its 95% tracking error on rubble is 0.36 m, still above the pad; the pad was left at 0.25 m because the filtered episodes had no violations (the fixed margins keep the robot about 2.4 m from survivors, as in Q3).
+- **The Go2 costs the same on rubble as on flat ground.** Paired by site, the rough-policy Go2 scores 0.068 +/- 0.015 below the unicycle (flat ground: 0.064 +/- 0.015; the flat policy on rubble: 0.179 +/- 0.036); the filter's own cost is -0.012 +/- 0.013.
+- **A bug in the first 40-site run.** The heightfield ended at the site bounds and a robot walking past the edge fell off the map, which gave 6 of 40 falls with the rough policy. The terrain now has a 10 m flat margin and the numbers above are from the rerun on 100 sites.
+- This is one noise level and one pad. Hazard ground is still hard (9 of 200 falls and 0.80 m tracking error in Table 19), but the filter keeps the robot out of it.
+
+![Site 74 on rubble](figures/mujoco/go2_rubble_site_074.png)
+
+**Figure 19.** Site 74 on the rubble heightfield with the rough policy (7 of 8 rescued, no fall, closest approach 2.54 m). Left: from above, trail at 1 Hz (rubble and hazard regions drawn translucent over the real terrain). Middle: the robot crossing rubble. Right: closest approach with the 1 m ring.
 
 ### Answer so far
 
@@ -613,11 +619,11 @@ The Q3 safety result carries over to a legged robot with a learned locomotion po
 The abrupt case (an estimate appearing 1.5-6 m ahead of a robot at full speed) is covered by the sudden-threat test above: no violation when the robot keeps re-detecting, but a single bad first sighting can still be unsafe. The Q3 check now also stands on 100 sites (Table 15 and its replication).
 
 **Not yet tested:**
-- rubble at more than 40 sites, several noise levels and a larger pad; fewer falls on rubble (the rough policy still falls in 6 of 40 episodes).
+- rubble at several noise levels and with a larger pad (one level, 0.25 m, so far); hazard ground, which the rough policy still crosses poorly.
 
 ## Limitations
 
-Survivors are a crude stand-in for people: three states, constant-speed motion, a fixed response model, and handling times, decay rates and self-evacuation that are modelling choices. The Q4 triage effect is small (+0.006 +/- 0.004 pooled over 700 sites on the fixed stack, not detectable at 200 sites, and +0.004 +/- 0.004 on the earlier stack) and exists only when the robot is capacity-limited and state sets the handling time; it should not be read as a measured benefit for real triage. Locomotion in the main results is a reduced-order unicycle with a measured tracking-error pad. A full Go2 model with a learned policy has been added in MuJoCo (not Isaac Sim, as proposed) and checked for Q3 only, on 100, 40 and 20 sites, on flat ground with rubble kept as a speed cap, plus a 40-site check on a rubble heightfield with a policy retrained on rough terrain, where the filter still gave zero violations but the robot fell in 6 of 40 episodes (see above). Two stack fixes made for it (routing around safety regions, letting confirmed tracks fade) are reflected in Tables 6-11, which were rerun on the fixed stack (the Q4 ablation panels and Table 12 were not). The track-retention gain is shown in the Q1-Q2 simulator only and did not carry over to the closed-loop stack (it is off by default there). Priority ordering was null across a grid of horizons and survivor counts, so its small gain is not explained by T being long. Detections are matched to tracks with a wide gate, so two nearby survivors can share one track and one of them can be lost when the other is rescued. The drone detector is parametric noise, not image-derived. The oracle for Q3-Q4 uses survivors' initial positions. The lower-confidence safety result (zero violations at 0.5-0.7) depends on the 1 m clearance and the fixed margins and was checked at three confidence levels and two noise levels, not at every setting. The Q5 observers are simulated people (the learned one is trained on synthetic walkers), not human subjects.
+Survivors are a crude stand-in for people: three states, constant-speed motion, a fixed response model, and handling times, decay rates and self-evacuation that are modelling choices. The Q4 triage effect is small (+0.006 +/- 0.004 pooled over 700 sites on the fixed stack, not detectable at 200 sites, and +0.004 +/- 0.004 on the earlier stack) and exists only when the robot is capacity-limited and state sets the handling time; it should not be read as a measured benefit for real triage. Locomotion in the main results is a reduced-order unicycle with a measured tracking-error pad. A full Go2 model with a learned policy has been added in MuJoCo (not Isaac Sim, as proposed) and checked for Q3 only, on 100, 40 and 20 sites, on flat ground with rubble kept as a speed cap, plus a 100-site check on a rubble heightfield with a policy retrained on rough terrain, with zero violations and no falls (see above). Two stack fixes made for it (routing around safety regions, letting confirmed tracks fade) are reflected in Tables 6-11, which were rerun on the fixed stack (the Q4 ablation panels and Table 12 were not). The track-retention gain is shown in the Q1-Q2 simulator only and did not carry over to the closed-loop stack (it is off by default there). Priority ordering was null across a grid of horizons and survivor counts, so its small gain is not explained by T being long. Detections are matched to tracks with a wide gate, so two nearby survivors can share one track and one of them can be lost when the other is rescued. The drone detector is parametric noise, not image-derived. The oracle for Q3-Q4 uses survivors' initial positions. The lower-confidence safety result (zero violations at 0.5-0.7) depends on the 1 m clearance and the fixed margins and was checked at three confidence levels and two noise levels, not at every setting. The Q5 observers are simulated people (the learned one is trained on synthetic walkers), not human subjects.
 
 ## Layout
 

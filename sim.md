@@ -102,7 +102,7 @@ Output lands in `logs/rsl_rl/go2_velocity/<timestamp>/` (checkpoints every 100 i
 
 - 0.1 m cells, one heightfield over the whole 100 m x 100 m site, built in about 0.25 s.
 - Rubble cells: random heights in {0, 2, 4, 6} cm. Hazard cells: {0, ..., 10} cm (the training maximum). Elsewhere flat. Heights are multiples of 2 cm as in training.
-- A 1.5 m disc around the robot start is flat, so the robot starts on level ground.
+- A 1.5 m disc around the robot start is flat, so the robot starts on level ground, and 10 m of flat ground surrounds the site (the plant is not clipped to the site, so a robot that walks off the edge must not fall off the map).
 - The rescue stack still caps speed in these regions (0.5x, 0.25x). The cap is how the planner estimates travel time; the terrain is now additionally physical.
 
 ### Tracking on rubble, flat-trained vs rough-trained policy
@@ -122,24 +122,25 @@ The rough policy cuts falls and tracking error on rubble and costs nothing on fl
 
 ### Q3 on rubble
 
-`scripts/mj_run_q3_rubble.py 40 8` (`runs/mj_q3_rubble.csv`): 40 sites, sigma_meas 0.5 m, confidence 0.7, pad 0.25 m, same sites and drone detections on every plant. An episode ends when the robot falls.
+`scripts/mj_run_q3_rubble.py 100 16` (`runs/mj_q3_rubble.csv`): 100 sites, sigma_meas 0.5 m, confidence 0.7, pad 0.25 m, same sites and drone detections on every plant. An episode ends if the robot falls.
 
 | Plant | Variant | Score | Rescue rate | Episodes with clearance violation | Hazard entries | Min. distance | Falls |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Unicycle | full | 0.775 | 0.93 | 0.00 | 0.00 | 2.42 | - |
-| Unicycle | no filter | 0.788 | 0.93 | 0.50 | 0.00 | 0.05 | - |
-| Go2, flat ground | full | 0.717 | 0.93 | 0.00 | 0.00 | 2.41 | 0 |
-| Go2, flat ground | no filter | 0.727 | 0.94 | 0.53 | 0.00 | 0.07 | 0 |
-| Go2, rubble, flat policy | full | 0.543 | 0.68 | 0.00 | 0.00 | 2.25 | 19 |
-| Go2, rubble, flat policy | no filter | 0.560 | 0.68 | 0.50 | 0.00 | 0.04 | 22 |
-| Go2, rubble, rough policy | full | 0.689 | 0.86 | 0.00 | 0.00 | 2.43 | 6 |
-| Go2, rubble, rough policy | no filter | 0.697 | 0.88 | 0.55 | 0.00 | 0.04 | 6 |
+| Unicycle | full | 0.738 | 0.90 | 0.00 | 0.00 | 2.39 | - |
+| Unicycle | no filter | 0.749 | 0.92 | 0.59 | 0.00 | 0.04 | - |
+| Go2, flat ground | full | 0.674 | 0.91 | 0.00 | 0.00 | 2.41 | 0 |
+| Go2, flat ground | no filter | 0.685 | 0.91 | 0.59 | 0.00 | 0.03 | 0 |
+| Go2, rubble, flat policy | full | 0.558 | 0.71 | 0.00 | 0.00 | 2.35 | 42 |
+| Go2, rubble, flat policy | no filter | 0.552 | 0.70 | 0.49 | 0.00 | 0.03 | 46 |
+| Go2, rubble, rough policy | full | 0.670 | 0.89 | 0.00 | 0.00 | 2.41 | 0 |
+| Go2, rubble, rough policy | no filter | 0.682 | 0.90 | 0.61 | 0.00 | 0.01 | 0 |
 
-Paired by site, full stack vs the unicycle: flat ground -0.058 +/- 0.017, rubble with the flat policy -0.233 +/- 0.086, rubble with the rough policy -0.086 +/- 0.046 (rescue rate -0.067 +/- 0.067). The filter's own cost on the rough-policy rubble runs is -0.008 +/- 0.013, within noise.
+Paired by site, full stack vs the unicycle: flat ground -0.064 +/- 0.015, rubble with the flat policy -0.179 +/- 0.036 (rescue rate -0.195 +/- 0.058), rubble with the rough policy -0.068 +/- 0.015 (rescue rate -0.011 +/- 0.019). The filter's own cost on the rough-policy rubble runs is -0.012 +/- 0.013, within noise.
 
-- **Safety holds on rubble.** With the filter there were no clearance violations and no hazard entries in the 40 episodes (closest approach 2.43 m); without it 55% of episodes violated.
-- **Falls are the real cost.** The flat policy fell in 19 of 40 filtered episodes, the rough policy in 6 of 40 (sites 3, 7, 9, 23, 28, 29). A fall ends the episode, so those sites lose their remaining rescues, and the safety numbers cover the part of the episode before the fall. The rough policy is better, not robust.
-- **This is 40 sites, one noise level, one pad.** It is a first check, like the 40-site flat one.
+- **Safety holds on rubble.** With the filter, 0 clearance violations and 0 hazard entries in 100 episodes with the rough policy (closest approach 2.41 m); without it 61% of episodes violated.
+- **The rough-trained policy is what makes rubble workable.** It did not fall in any of 200 episodes and its score sits where flat ground does (the gap to the unicycle is the same, about 0.065, as on flat ground). The flat-trained policy fell in 42 of 100 filtered episodes.
+- **An earlier 40-site run had a bug and is superseded.** The heightfield ended exactly at the site bounds, so a robot that walked past the edge fell off the map (the old flat plane was infinite); that produced 6 of 40 falls with the rough policy. The heightfield now has 10 m of flat margin (`mj_terrain.MARGIN`). The flat policy's 42 falls are mostly terrain: the rough policy, on the same paths, had none.
+- **One noise level, one pad.** sigma_meas 0.5 m and a 0.25 m pad; the rubble tracking error (0.36 m at 95%) is above the pad, but the fixed margins keep the robot about 2.4 m from survivors.
 
 ## Scripts
 
@@ -166,6 +167,6 @@ PYTHONPATH=. python scripts/mj_rubble_calibrate.py --n 200 --policy sim/go2/poli
 - [x] Rough policy trained (3000 iterations) and exported to `sim/go2/policy_rough.onnx`
 - [x] Rubble calibration with both policies; `eps_track` left at 0.25 m
 - [x] Q3 on rubble (`mj_run_q3_rubble.py`), README, writeup and slides updated
-- [ ] Larger rubble check (100 sites, several noise levels) and a pad of 0.35-0.40 m to see whether it removes any margin issues
-- [ ] Fewer falls: train longer or on rubble-matched terrain (rubble cells here are harsher than most training tiles)
-- [ ] Re-render the Go2 figures with visible rubble (`render_mj.py`)
+- [x] 100-site rubble check (`runs/mj_q3_rubble.csv`) and the rubble render (`scripts/render_mj_rubble.py`, `figures/mujoco/go2_rubble_site_074.png`)
+- [ ] Several noise levels and a larger pad (0.35-0.40 m) on rubble
+- [ ] Hazard ground is still hard (9 of 200 falls and 0.80 m tracking error in the calibration); it only matters if the planner ever sends the robot there
