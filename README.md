@@ -572,7 +572,7 @@ The values are the same at both speeds to within 0.01 m. The Go2 stops about 0.1
 
 Without the filter every run violated, except where the survivor appeared 6 m ahead of a robot walking at 0.5 m/s (it never got there in time). No falls.
 
-- **With 10 Hz re-detection the filter holds** down to a 1.5 m appearance at full speed: 0 of 480 filtered runs came within 1 m (0 of 1,440 in the 30-seed rerun), and the closest approach was 1.07 m (unicycle) and 1.34 m (Go2), both at 1 m/s and a 1.5 m appearance, so the margin there is thin. **This is not the stack's update rate.** At 1 Hz it does not hold at 1.5 m and 1 m/s (Table 18b).
+- **With 10 Hz re-detection the filter holds** down to a 1.5 m appearance at full speed: 0 of 480 filtered runs came within 1 m (0 of 1,440 in the 30-seed rerun), and the closest approach was 1.07 m (unicycle) and 1.34 m (Go2), both at 1 m/s and a 1.5 m appearance, so the margin there is thin. **This is not the stack's update rate.** At 1 Hz it does not hold at 1.5 m and 1 m/s (Table 18b). Table 18b is itself optimistic about the stack; see Table 18e.
 - **With one bad sighting it can be beaten.** The violations in the one-estimate rows come from the seeds whose first estimate was off by 1.0 m or more (the median first-sighting error was 0.43 m). The filter keeps about 2.3-2.5 m from the *estimate*, so a first sighting wrong by more than roughly 1.3 m toward the robot, never corrected, puts the robot inside 1 m of the true survivor. At confidence 0.7 the region around a fresh track is small (0.8 m), so this is where a higher confidence would matter again, at the cost reported in Q3. The 1.5-2 m appearances are also partly unavoidable, since the barrier is already violated when the survivor appears.
 - **The Go2 behaves like the unicycle**, with 0.1-0.3 m more margin at 0.5 m/s, consistent with Table 17.
 
@@ -589,7 +589,44 @@ Without the filter every run violated, except where the survivor appeared 6 m ah
 | 0.99 fresh | Go2 0.5 | 0 (1.21) | 0 (1.88) | 0 (2.15) | 0 (2.20) | 0 (2.22) | 0 (2.55) |
 | 0.99 fresh | Go2 1.0 | **1** (0.90) | 0 (1.66) | 0 (2.04) | 0 (2.11) | 0 (2.11) | 0 (2.07) |
 
-At the stack's rate, 9 of 1,440 filtered runs violate, all at a 1.5 m appearance and 1 m/s, where the barrier is already breached when the survivor appears; from 2 m on, none.
+At the stack's rate, 9 of 1,440 filtered runs violate, all at a 1.5 m appearance and 1 m/s, where the barrier is already breached when the survivor appears; from 2 m on, none. **That is a lower bound for the real stack, not its result: the stand-alone test has no detection latency (Table 18e).**
+
+#### Through the real stack
+
+`scripts/mj_sudden_stack.py`. The stand-alone test hands the filter the estimate at t = 3.0 s, which is a plan tick, and re-detects on later ticks. In the stack a first sighting reaches the belief only at the next 1 Hz plan tick, and the belief gets one 10 Hz sample per second, which is a hit 90% of the time. So the stand-alone numbers could be optimistic. Here `run_episode_ctrl` runs the whole stack (belief, 1 Hz search and plan, MPC, CBF filter): the drone found a goal survivor 25 m ahead (exact prior) and missed a second one at x = 10 m on the path (lateral offset 0 or 0.7 m). The onboard sensor radius is set to the appearance distance, so the missed survivor is first sensed that far away; the rescue radius is 0 so the robot never "rescues" (and so never learns the position of) the survivor it should not know about. Violation = robot centre within 1 m of the missed survivor at any 10 Hz control step. 30 seeds x 2 offsets = 60 runs per cell, both plants (flat MuJoCo Go2), no falls. Measured on the 1,440 filtered runs: the survivor was always sensed and always reached the belief, with a **sense-to-belief latency of 0.63 s on average (median 0.60, 90th percentile 1.4, maximum 2.5 s)**, which is the extra distance of 0.4 m on average (up to 2.5 m) the robot walks before the filter knows.
+
+**Table 18e.** Runs (of 60) within 1 m of the missed survivor, full stack (MPC + filter) and MPC without the filter, by distance at which the survivor is first sensed.
+
+| Plant, speed (m/s) | Variant | 1.5 m | 2.0 m | 2.5 m | 3.0 m | 4.0 m | 6.0 m |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| unicycle 0.5 | full | 14 | 1 | 0 | 0 | 0 | 0 |
+| unicycle 0.5 | no filter | 34 | 5 | 0 | 0 | 0 | 0 |
+| unicycle 1.0 | full | 12 | **19** | 3 | 3 | 0 | 0 |
+| unicycle 1.0 | no filter | 33 | 34 | 2 | 6 | 1 | 0 |
+| Go2 0.5 | full | 2 | 1 | 0 | 0 | 0 | 0 |
+| Go2 0.5 | no filter | 9 | 2 | 0 | 0 | 0 | 0 |
+| Go2 1.0 | full | 8 | **14** | 2 | 0 | 0 | 0 |
+| Go2 1.0 | no filter | 14 | 20 | 4 | 0 | 0 | 0 |
+
+- **The stand-alone test was optimistic.** 79 of 1,440 filtered runs (5.5%) violate through the stack, against 9 of 1,440 in Table 18b, and the violations are not confined to the 1.5 m cell: at 1 m/s they reach 2.0 m (19 of 60 on the unicycle, 14 on the Go2) and 2.5-3.0 m (up to 3 of 60). Even at 0.5 m/s the unicycle has 14 of 60 at 1.5 m. The statement "no violation from 2 m on at the stack's update rate" was wrong for the stack.
+- **The latency explains it.** Violation rate rises with sense-to-belief latency: 11 of 458 runs with under 0.5 s, 26 of 793 at 0.5-1 s, 36 of 175 at 1-2 s and 6 of 14 beyond 2 s. A survivor first sensed 2 m ahead at 1 m/s behaves like the stand-alone 1.5 m case once 0.5-1 s has passed.
+- **The filter still helps** (79 violating runs with it against 164 with the MPC alone), and the Go2 is better than the unicycle, but the margin the filter needs at a first sighting is not there below about 3 m at full speed.
+- **`conf_fresh` was not applied by the stack's filter; now it is, and it barely helps.** `CBFFilter.filter` used one confidence for every track, so the option reached only the standoff goal and router (79 violating runs, identical to the default). The filter now accepts an optional per-track confidence (`(mu, Sigma, confidence)`) and the stack passes `conf_fresh` for fresh tracks. With `conf_fresh = 0.99`, `n_fresh = 5` through the stack: 77 violating runs instead of 79 (`fresh99` rows of `runs/mj_sudden_stack.csv`). A larger region cannot fix a belief that learns of the survivor 0.6 s late. The rubble cost in Table 18d was measured before this change (it then measured only the standoff effect) and has not been rerun with the filter active. The option is off by default.
+- **A 10 Hz first-detection path fixes most of it (prototype, `StackConfig(fast_detect=True)`, off by default).** An onboard detection that no confirmed belief track explains becomes a provisional track in the filter at the next control step (sigma 0.5 m, fused at 10 Hz, dropped once the 1 Hz belief holds the survivor or after 5 s); the belief, search and MPC are unchanged. Through the same 1,440 runs: **11 violating runs instead of 79** (10 with `conf_fresh = 0.99`); the unicycle at 1 m/s and 1.5 m has 10 of 60, one run at 2.5 m, and nothing else (Go2: 0 of 1,440 on both speeds; unicycle 0.5 m/s: 0). The remaining 10 are the case already inside the barrier when the estimate appears. No falls.
+
+**Table 18f.** Runs (of 60) within 1 m, full stack with and without the 10 Hz first-detection path.
+
+| Plant, speed (m/s) | Path | 1.5 m | 2.0 m | 2.5 m | 3.0 m | 4.0 m | 6.0 m |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| unicycle 0.5 | off / on | 14 / 0 | 1 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| unicycle 1.0 | off / on | 12 / 10 | 19 / 0 | 3 / 1 | 3 / 0 | 0 / 0 | 0 / 0 |
+| Go2 0.5 | off / on | 2 / 0 | 1 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Go2 1.0 | off / on | 8 / 0 | 14 / 0 | 2 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+
+- **The 10 Hz path costs nothing on the closed-loop benchmark, but this benchmark does not exercise it.** `scripts/ctrl_run_fast_detect.py`, unicycle, 100 sites, sigma_meas 0.5 m, full stack: score 0.738 with the path off and on, rescue rate 0.90, no clearance violations or hazard entries, closest approach 2.39 m in both; the paired score difference is +0.000 +/- 0.000. Only 1 of 100 sites differs at all (site 81: 0.8501 vs 0.8508). Provisional tracks do occur (one at a time in the sites I checked), and are dropped as soon as the belief holds the survivor, so with the 10 m sensor they sit far from the robot and never constrain it. This shows the path is harmless where survivors are seen early; it does not show a benefit there. Rubble and the MuJoCo Go2 were not rerun.
+- **Not tested here:** a detector that sees farther than the appearance distance (the stack's 10 m sensor would normally see a survivor the drone missed long before 2 m; these runs ask what happens if it does not, for example behind rubble), and detection latency below 1 Hz sampling.
+
+The 1 Hz stand-alone rows in Tables 18b-18d (and the 10 Hz rows) should be read as the filter's behaviour for a given estimate, not as the stack's safety margin.
 
 #### Higher confidence on fresh tracks
 
@@ -615,7 +652,7 @@ The weak spot is a bad first sighting. `StackConfig.conf_fresh` / `n_fresh` (off
 | 0.99 on fresh tracks (5 detections) | 0.667 | 0.89 | 2.42 |
 | 0.99 on fresh tracks (10 detections) | 0.653 | 0.89 | 2.41 |
 
-- **A higher confidence fixes the never-corrected case** (103 to 10 of 1,440 at 0.99), but that case does not arise in the stack, which re-detects at 1 Hz. At 1 Hz the baseline already has only 9 violations, all at the hardest cell, and 0.99 on fresh tracks removes 3 of them. Those that remain are probably set by stopping distance (not checked).
+- **A higher confidence fixes the never-corrected case** (103 to 10 of 1,440 at 0.99), but that case does not arise in the stack, which re-detects at 1 Hz. At 1 Hz the baseline already has only 9 violations, all at the hardest cell, and 0.99 on fresh tracks removes 3 of them. (Both numbers are for the stand-alone filter; through the stack the option has no effect on the barrier, see Table 18e.) Those that remain are probably set by stopping distance (not checked).
 - **Applied to every track the cost is large** (0.99: -0.18 score, -14 points of rescue rate on rubble). **Limited to fresh tracks it is close to free** (-0.003 at 5 detections, -0.017 at 10), because the window is short. The rule is therefore available but left off: the benefit at the stack's update rate is small (3 of 1,440 runs) and was only measured in this test.
 
 ### Physical rubble
@@ -699,6 +736,32 @@ Until here the Go2 walked on a flat plane and rubble was only a speed cap in the
 
 **What the sweep shows.** On rubble, the one margin that decides safety is the required clearance itself: the confidence ellipse, the tracking pad and the noise level all had slack, and the closest approach followed `d_clear` + about 0.5 m down to the 1 m line. Nothing in these runs shows the pad or the ellipse doing work; they are not what keeps the robot out of the 1 m zone here.
 
+#### Does the pad bind? Injected tracking error
+
+Every closed-loop rubble run left the pad and the ellipse slack (above), so the claim that the 0.25 m pad is "derived from the measured tracking error" had never been shown to matter. `scripts/pad_binding.py` makes it matter. A closed-loop episode rarely exercises the barrier (the standoff goal sits 0.1 m outside it), so the test is head-on: the nominal controller drives at a survivor and the filter alone stops the robot, so the barrier is active in every run. The plant (`rescue/dist_plant.py`) is the unicycle plus an unmodelled position disturbance (2-D Ornstein-Uhlenbeck velocity, time constant 1 s), which the planner and filter do not know about. Disturbance levels are labelled by the same statistic the pad is derived from, the 95% gap after 1 s against the ideal unicycle (the bare unicycle's own gap is 0.27 m; the Go2 numbers in Table 19 are 0.2-0.95 m). 300 random starts x 2 speeds = 600 runs per cell; violation = robot centre within 1 m of the true survivor. Three cases: `exact` (estimate exact), `ellipse` (estimate error 0.5 m, confidence 0.7, the stack's setting; the true survivor is drawn around the estimate) and `no ellipse` (the same with confidence 0.01).
+
+**Table 23.** Runs (of 600) within 1 m of the survivor, by injected tracking error (95% gap after 1 s) and pad; closest approach in m in brackets.
+
+| Case | 95% gap | Pad 0 | Pad 0.25 m (in use) | Pad 0.5 m | Pad 1.0 m |
+| --- | --- | --- | --- | --- | --- |
+| exact | 0.27 (none injected) | 0 (1.50) | 0 (1.75) | 0 (2.00) | 0 (2.50) |
+| exact | 0.47 | 9 (0.52) | 2 (0.73) | 1 (0.96) | 0 (1.44) |
+| exact | 0.88 | 133 | 64 | 37 | 10 |
+| exact | 1.30 | 200 | 146 | 101 | 49 |
+| ellipse (conf 0.7) | 0.27 | 0 (1.18) | 0 (1.38) | 0 (1.60) | 0 (2.04) |
+| ellipse (conf 0.7) | 0.47 | 4 | 2 | 2 | 0 (1.05) |
+| ellipse (conf 0.7) | 0.88 | 48 | 33 | 19 | 3 |
+| ellipse (conf 0.7) | 1.30 | 109 | 70 | 55 | 20 |
+| no ellipse (conf 0.01) | 0.27 | 55 (0.58) | 16 (0.83) | 0 (1.02) | 0 (1.42) |
+| no ellipse (conf 0.01) | 0.47 | 108 | 47 | 10 | 2 |
+| no ellipse (conf 0.01) | 0.88 | 195 | 124 | 71 | 33 |
+| no ellipse (conf 0.01) | 1.30 | 234 | 178 | 134 | 69 |
+
+- **The pad binds.** With the pad at 0 and a 0.47 m tracking error, 9 of 600 runs violate; the violations fall monotonically as the pad grows (9, 2, 1, 0), and the closest approach moves with it. The same holds at larger errors. So the pad does protect against tracking error when the barrier is active; it was slack in the closed-loop runs because those runs never push the robot against the barrier, not because it does nothing.
+- **A pad equal to the 95% error does not make it safe.** At a 0.47 m error the 0.5 m pad still has 1 violation; at 0.88 m the pad of 0.5 m leaves 37 of 600 (6%) and even 1.0 m leaves 10. The disturbance here is persistent (1 s correlation), not a one-off 1 s displacement, so the barrier sees it repeatedly; a 95% quantile of a 1 s gap is not a worst-case bound. The wording "the pad is derived from the measured tracking error" is supported only in the sense that the pad is the right size at about the measured error (0.27 m here, 0.25 m pad: no violations); it is not a guarantee, and for a policy with a larger error (the flat-trained one on rubble, 0.59 m) 0.25 m is too small.
+- **The ellipse binds too, when the estimate is wrong.** With no tracking error and 0.5 m of estimate error, removing the ellipse (confidence 0.01) at pad 0 gives 55 violations of 600, against 0 at confidence 0.7. Confidence 0.7 also absorbs part of the tracking error (at a 0.88 m error and pad 0.25: 33 against 124). In the closed-loop runs the ellipse was slack because estimates there were good and the fixed margins large; here the pad and ellipse share one job and each covers for the other.
+- **What this changes in the writeup.** "The pad is not what is being tested" (Table 21) remains true of the closed-loop runs, but the statement that nothing shows the pad doing work is withdrawn: this test shows it. Not shown: that the pad binds in a closed-loop episode on the real Go2 (the injected error here is a model, not a measured Go2 failure), or that 0.25 m is the right value for the Go2 on rubble (its 95% gap there is 0.36 m).
+
 ![Site 74 on rubble](figures/mujoco/go2_rubble_site_074.png)
 
 **Figure 19.** Site 74 on the rubble heightfield with the rough policy (7 of 8 rescued, no fall, closest approach 2.54 m). Left: from above, trail at 1 Hz (rubble and hazard regions drawn translucent over the real terrain). Middle: the robot crossing rubble. Right: closest approach with the 1 m ring.
@@ -707,7 +770,7 @@ Until here the Go2 walked on a flat plane and rubble was only a speed cap in the
 
 The Q3 safety result carries over to a legged robot with a learned locomotion policy: the filter kept every episode violation-free on both plants, and the measured tracking error (0.19 m at 95%) is within the pad already in use. The Go2 scores about 0.06 lower than the unicycle, with or without the filter, because it walks slower than commanded. Running on the Go2 also found two stack bugs that could stop the robot for the rest of an episode; both are fixed.
 
-The abrupt case (an estimate appearing 1.5-6 m ahead of a robot at full speed) is covered by the sudden-threat test above: no violation from 2 m on at the stack's 1 Hz update rate, but 9 of 1,440 runs violate at a 1.5 m appearance and 1 m/s (and a bad first sighting that is never corrected can be unsafe at any distance, though the stack does not re-detect that slowly). A higher confidence on fresh tracks (`conf_fresh`, off by default) removes 3 of those 9 at almost no cost (Tables 18b-18d). The Q3 check now also stands on 100 sites (Table 15 and its replication).
+The abrupt case (an estimate appearing 1.5-6 m ahead of a robot at full speed) is covered by the sudden-threat test above: no violation from 2 m on for the stand-alone filter at 1 Hz re-detection (9 of 1,440 runs violate, at a 1.5 m appearance and 1 m/s), but **through the real stack, with the belief's 0.6 s average sense-to-belief latency, 79 of 1,440 filtered runs violate, up to 2.5-3.0 m at full speed (Table 18e)** (and a bad first sighting that is never corrected can be unsafe at any distance, though the stack does not re-detect that slowly). The higher confidence on fresh tracks (`conf_fresh`, off by default) removed 3 of those 9 in the stand-alone test, but once wired into the stack's filter it removes only 2 of 79 violations (Table 18e). The Q3 check now also stands on 100 sites (Table 15 and its replication).
 
 On physical rubble (a heightfield, with a policy retrained on rough terrain) the filter again gave no violations in 100 sites, and the rough-trained Go2 did not fall, while the flat-trained policy fell in 42 of 100 episodes (Tables 19-20); this held at noise of 1.0 and 2.0 m and with a 0.40 m pad (Table 21), though the robot stays about 2.4 m from survivors, so the pad is never close to binding; shrinking the margins (confidence 0.01, no pad) still gave no violations, which only appeared once `d_clear` itself was cut to 0.4 m or less (Table 22); the Go2's score gap to the unicycle is the same on rubble as on flat ground (about 0.065).
 
@@ -715,6 +778,10 @@ On physical rubble (a heightfield, with a policy retrained on rough terrain) the
 - hazard ground, which the rough policy still crosses poorly.
 
 ## Limitations
+
+**Audit of "matches the stack" claims** (after the 10 Hz claim in Experiments 1-3 was found wrong). Checked against the code: (1) the sudden-threat test (`mj_sudden_threat.py`, `mj_sudden_fresh.py`) is a stand-alone filter test with no sighting-to-belief latency, a guaranteed first detection and a first sighting that lands on a plan tick; it is a best case, not the stack (Table 18e: 79 of 1,440 violate through the stack against 9). Its docstring still said "as the stack's belief does" and is fixed. (2) The head-on test (Table 17) makes no update-rate or belief assumption (exact position, filter at every 10 Hz control step, as in the stack), but it is six runs per row and had no violation with the pad off, so it never tested the pad (Table 23 does). (3) Q3 and the rubble tables run the full stack through `run_episode_ctrl`, so their belief rate is the real one; their violations are counted at every 10 Hz step. (4) `conf_fresh` was described as acting in the stack but was not applied by its filter; fixed, effect 79 to 77 violations (Table 18e). (5) Not re-checked: the other uses of "the stack's" in the Q4-Q5 text, which describe the stack's own runs.
+
+**Open issues not yet addressed.** (a) Safety margins cost no score on the rubble benchmark (0.667-0.681 from confidence 0.7 down to 0.01); this shows the cost is nil here, not that it is nil elsewhere, and why the score is so insensitive is not known. (b) The no-filter baseline violates in about 60% of episodes at every noise level, so these runs cannot show the filter protecting more as conditions worsen. (c) The closest approach follows `d_clear` + 0.5 m; the control-point offset (0.25 m) and the overshoot have not been separated, so the guide line in Figure 20 is a fit. (d) A survivor first seen 1.5 m ahead at 1 m/s is inside the barrier when the estimate appears: a design problem (earlier detection, lower speed near unexplored ground), not a margin.
 
 Survivors are a crude stand-in for people: three states, constant-speed motion, a fixed response model, and handling times, decay rates and self-evacuation that are modelling choices. The Q4 triage effect is small (+0.006 +/- 0.004 pooled over 700 sites on the fixed stack, not detectable at 200 sites, and +0.004 +/- 0.004 on the earlier stack) and exists only when the robot is capacity-limited and state sets the handling time; it should not be read as a measured benefit for real triage. Locomotion in the main results is a reduced-order unicycle with a measured tracking-error pad. A full Go2 model with a learned policy has been added in MuJoCo (not Isaac Sim, as proposed) and checked for Q3 only, on 100, 40 and 20 sites, on flat ground with rubble kept as a speed cap, plus a 100-site check on a rubble heightfield with a policy retrained on rough terrain, with zero violations and no falls (see above). Two stack fixes made for it (routing around safety regions, letting confirmed tracks fade) are reflected in Tables 6-11, which were rerun on the fixed stack (the Q4 ablation panels and Table 12 were not). The track-retention gain is shown in the Q1-Q2 simulator only and did not carry over to the closed-loop stack (it is off by default there). Priority ordering was null across a grid of horizons and survivor counts, so its small gain is not explained by T being long. Detections are matched to tracks with a wide gate, so two nearby survivors can share one track and one of them can be lost when the other is rescued. The drone detector is parametric noise, not image-derived. The oracle for Q3-Q4 uses survivors' initial positions. The lower-confidence safety result (zero violations at 0.5-0.7) depends on the 1 m clearance and the fixed margins and was checked at three confidence levels and two noise levels, not at every setting. The Q5 observers are simulated people (the learned one is trained on synthetic walkers), not human subjects.
 
@@ -754,6 +821,8 @@ scripts/ctrl_run_retention.py   # retention in the closed-loop stack
 scripts/run_regime.py, run_reward_shape.py, run_reward_weights.py   # Q2 priority vs. nearest-first over horizon / survivor count, reward decay, and class weights
 scripts/mj_sudden_threat.py   # sudden close-range threat on both plants
 scripts/mj_sudden_fresh.py   # sudden threat with a higher confidence on fresh tracks (single / 10 Hz / 1 Hz re-detection)
+scripts/mj_sudden_stack.py   # sudden threat through the real stack (belief at 1 Hz, MPC, filter), with detection latency measured
+scripts/pad_binding.py   # head-on test with injected tracking error (rescue/dist_plant.py): does the pad / ellipse bind?
 scripts/mj_run_q3_rubble_conf.py, mj_run_q3_rubble_fresh.py   # cost of a higher confidence on rubble: every track vs. fresh tracks only
 scripts/profile_layers.py   # per-layer compute timing
 scripts/render_rollout.py, render_pipeline.py   # filtered vs. unfiltered rollout figure, pipeline diagram
@@ -815,5 +884,5 @@ Retraining the policy (Linux or WSL2, NVIDIA GPU; full commands, versions and th
 
 Open problems found by the experiments above, in the order planned. The first is done as an option (below); the second has not been started.
 
-1. **Fix the sudden-threat weak spot. Done as an option; effect small.** A higher confidence on fresh tracks (`StackConfig.conf_fresh`, `n_fresh`) removes the never-corrected failure (103 to 10 of 1,440 at 0.99) and 3 of the 9 violations at the stack's 1 Hz update rate, at -0.003 score on rubble ([Higher confidence on fresh tracks](#higher-confidence-on-fresh-tracks)). It is off by default. What remains is a 1.5 m appearance at 1 m/s, where the barrier is breached at the first step; fixing that needs earlier detection or a lower speed near unexplored ground, not a bigger region.
+1. **Fix the sudden-threat weak spot. Open, and larger than first measured.** Through the real stack (belief at 1 Hz, MPC, filter) 79 of 1,440 first-sighting runs violate, up to 2.5-3.0 m at full speed (Table 18e), not 9 as the stand-alone test said, because a sighting takes 0.6 s on average to reach the belief. The `conf_fresh` option is now wired into the stack's filter but removes only 2 of the 79 violations (77 with it); its earlier effect was measured on the stand-alone filter. A survivor first seen 1.5 m ahead at 1 m/s is already inside the barrier when the estimate appears; fixing the cases needs earlier detection (use the detection directly in the 10 Hz filter instead of waiting for the next plan tick), a lower speed near unexplored ground, or both; a bigger region cannot help.
 2. **Find out why track retention did not transfer to the closed-loop stack.** Retention helps in the search simulator ([Track retention](#track-retention-fixing-the-dropped-track-loss)) but not in the closed-loop Go2 stack. Log where the robot parks and which tracks it holds in the closed-loop runs, compare with the search simulator on the same sites, and see whether the cause is the standoff behavior, the safety regions or the belief's forgetting of stale tracks.
