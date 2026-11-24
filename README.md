@@ -59,11 +59,11 @@ Closed-loop Q3-Q5 (control-rate simulator, `ctrl_sim.py`; the Q1-Q2 `sim.py` is 
 - Q5: a heading-legibility term in the planner (`StackConfig.legibility_heading`) and a learned third observer (`legibility.LearnedObserver`)
 - Q3: safety-region confidence sweep; optional 10 Hz measurement fusion (`StackConfig.avg_meas`, off: it did not help)
 
-Full Go2 model in MuJoCo with a learned locomotion policy (initial results, [below](#mujoco-go2-with-a-learned-locomotion-policy-initial-results)):
+Full Go2 model in MuJoCo with a learned locomotion policy (initial results, [below](#mujoco-go2-with-a-learned-locomotion-policy-initial-results); how the policies were trained and how to reproduce the simulation is in [`sim.md`](sim.md)):
 
 - `mj_plant.py`: the Go2 robot model and learned velocity policy that `unitree_rl_mjlab` trains, rebuilt in plain MuJoCo, as an optional plant behind `ctrl_sim.py` (`run_episode_ctrl(..., plant=Go2MujocoPlant())`, or `plant="mujoco"` in an experiment job); the unicycle stays the default
 - `sim/go2/`: the trained policy (`policy.onnx`), its training configs and the robot model
-- `scripts/mj_calibrate.py` (tracking and the tracking-error pad), `mj_run_q3.py`, `mj_run_conf.py`, `mj_cbf_stress.py` (Q3 checks on both plants), `render_mj.py` (all figures in `figures/mujoco/`), `diag_stall.py` (stack-state log of episodes that stop making progress)
+- `scripts/mj_calibrate.py` (tracking and the tracking-error pad), `mj_run_q3.py`, `mj_run_conf.py`, `mj_cbf_stress.py`, `mj_rubble_calibrate.py`, `mj_run_q3_rubble.py` (Q3 checks on both plants, and on a rubble heightfield), `render_mj.py` (all figures in `figures/mujoco/`), `diag_stall.py` (stack-state log of episodes that stop making progress)
 - Track retention (`PriorSearch(retention=...)`, off by default) and its ablation, a Q2 regime map, a sudden-threat test and a 100-site Go2 Q3 check (see [Track retention](#track-retention-fixing-the-dropped-track-loss), the regime check in Q2 and [Sudden close-range threat](#sudden-close-range-threat))
 - Two stack fixes found on the Go2, on by default: the route goes around survivors' safety regions (`StackConfig.route_around_regions`), and missed detections lower a confirmed track's existence (`StackConfig.forget_stale_tracks`); see [Planner fixes](#planner-fixes-found-on-the-go2). The Q3-Q5 closed-loop tables predate them (Q1-Q2 do not use this stack)
 
@@ -293,7 +293,7 @@ Episodes with a violation were 0 in every cell (2,400 episodes in the rerun, clo
 
 **Hazard stress test.** With a hazard-blind planner the unfiltered stack entered a hazard in 57% of episodes and had a clearance violation in 66%; the filtered one had neither, at about 1 point of score (0.71 vs 0.72). With the hazard-aware planner neither variant entered a hazard, so the hazard barrier matters only when the planner fails.
 
-**Answer.** Yes. The filter eliminated every clearance violation in every condition (over 4,000 filtered episodes in total), against 40-61% of unfiltered episodes with one. At the default confidence of 0.7 the cost is within noise of zero at every noise level (point estimates between -1.6 and -0.3 points at the default 0.7; the 0.9 setting cost 1 to 6), with violations still at zero. The loss from localization uncertainty itself (0.75 to 0.52 as sigma_meas grows) is larger than the filter's. The filter needs active uncertainty reduction: when the safety region is as large as the sensing range, the robot circles the region until it sees the survivor.
+**Answer.** Yes. The filter eliminated every clearance violation in every condition (over 4,000 filtered episodes in total), against 44-61% of unfiltered episodes with one. At the default confidence of 0.7 the cost is within noise of zero at every noise level (point estimates between -1.6 and -0.3 points at the default 0.7; the 0.9 setting cost 1 to 6), with violations still at zero. The loss from localization uncertainty itself (0.75 to 0.52 as sigma_meas grows) is larger than the filter's. The filter needs active uncertainty reduction: when the safety region is as large as the sensing range, the robot circles the region until it sees the survivor.
 
 ### Q4: survivor state
 
@@ -427,6 +427,8 @@ Every layer is far inside its budget: the 10 Hz control step (MPC plus filter) c
 What this does not measure: the Go2 policy inference and physics step, the drone detector and the onboard person detector (neither is run here), and a robot-class processor, which would be slower than this laptop; the claim is that the planning stack is not the bottleneck, not a hardware latency figure.
 
 ## MuJoCo Go2 with a learned locomotion policy (initial results)
+
+*Training, versions, rubble terrain and step-by-step reproduction are in [`sim.md`](sim.md).*
 
 The results above use a reduced-order unicycle as the robot. Here the same stack drives a full Go2 model in MuJoCo, walking with a learned locomotion policy. The proposal planned this in Isaac Sim / Isaac Lab; it was done in MuJoCo instead, with the policy trained in mjlab (MuJoCo Warp). These are first results on fewer sites than the tables above (40 and 20 instead of 100).
 
@@ -572,6 +574,38 @@ Without the filter every run violated, except where the survivor appeared 6 m ah
 - **With one bad sighting it can be beaten.** The violations in the one-estimate rows come from the seeds whose first estimate was off by 1.0 m or more (the median first-sighting error was 0.43 m). The filter keeps about 2.3-2.5 m from the *estimate*, so a first sighting wrong by more than roughly 1.3 m toward the robot, never corrected, puts the robot inside 1 m of the true survivor. At confidence 0.7 the region around a fresh track is small (0.8 m), so this is where a higher confidence would matter again, at the cost reported in Q3. The 1.5-2 m appearances are also partly unavoidable, since the barrier is already violated when the survivor appears.
 - **The Go2 behaves like the unicycle**, with 0.1-0.3 m more margin at 0.5 m/s, consistent with Table 17.
 
+### Physical rubble
+
+Until here the Go2 walked on a flat plane and rubble was only a speed cap in the stack. `rescue/mj_terrain.py` now builds a MuJoCo heightfield from a site's regions (rubble cells 0-6 cm, hazard cells 0-10 cm, random per 0.1 m cell in 2 cm steps, a flat disc at the start; `Go2MujocoPlant(rubble=True)`), and the policy was retrained on rough terrain (`Unitree-Go2-Rough`, 3000 iterations; its actor also takes a height scan, which the plant supplies). The stack still caps speed in those regions. Training, versions and reproduction are in [`sim.md`](sim.md).
+
+**Table 19.** Tracking on each ground type, 200 random starts, error after 1 s against the ideal unicycle (`scripts/mj_rubble_calibrate.py`).
+
+| Ground | Policy | Falls | Median | 95% | 99% |
+| --- | --- | --- | --- | --- | --- |
+| Flat | flat-trained | 0 / 200 | 0.086 m | 0.204 m | 0.269 m |
+| Flat | rough-trained | 0 / 200 | 0.085 m | 0.211 m | 0.247 m |
+| Rubble | flat-trained | 6 / 200 | 0.241 m | 0.589 m | 0.937 m |
+| Rubble | rough-trained | 4 / 200 | 0.152 m | 0.355 m | 0.507 m |
+| Hazard | flat-trained | 34 / 200 | 0.426 m | 0.847 m | 0.952 m |
+| Hazard | rough-trained | 9 / 200 | 0.284 m | 0.801 m | 0.920 m |
+
+**Table 20.** Q3 on rubble (`scripts/mj_run_q3_rubble.py`, 40 sites, sigma_meas 0.5 m, confidence 0.7, pad 0.25 m; an episode ends when the robot falls).
+
+| Plant | Variant | Score | Rescue rate | Episodes with clearance violation | Min. distance (m) | Falls |
+| --- | --- | --- | --- | --- | --- | --- |
+| Unicycle | full | 0.775 | 0.93 | 0.00 | 2.42 | - |
+| Unicycle | no filter | 0.788 | 0.93 | 0.50 | 0.05 | - |
+| Go2, flat ground | full | 0.717 | 0.93 | 0.00 | 2.41 | 0 |
+| Go2, rubble, flat policy | full | 0.543 | 0.68 | 0.00 | 2.25 | 19 |
+| Go2, rubble, flat policy | no filter | 0.560 | 0.68 | 0.50 | 0.04 | 22 |
+| Go2, rubble, rough policy | full | 0.689 | 0.86 | 0.00 | 2.43 | 6 |
+| Go2, rubble, rough policy | no filter | 0.697 | 0.88 | 0.55 | 0.04 | 6 |
+
+- **Safety holds on rubble.** With the filter: no clearance violations and no hazard entries (closest approach 2.43 m with the rough policy); without it 55% of episodes violated.
+- **The flat-trained policy is not enough on rubble:** it fell in 19 of 40 filtered episodes and its 95% tracking error (0.59 m) is more than twice the 0.25 m pad. The rough-trained policy fell in 6 of 40 (95% error 0.36 m, still above the pad). The pad was left at 0.25 m since the filtered episodes had no violations, because the fixed margins keep the robot about 2.4 m from survivors, as in Q3.
+- **Falls are the cost.** Paired by site, the rough-policy Go2 scores 0.086 +/- 0.046 below the unicycle (flat ground: 0.058 +/- 0.017); the filter's own cost is -0.008 +/- 0.013. A fall ends an episode, so falling sites lose their remaining rescues and their safety statistics cover only the time before the fall. Hazard ground is still hard (9 of 200 falls and 0.80 m error) but the filter keeps the robot out of it.
+- This is 40 sites at one noise level and one pad, a first check on rubble.
+
 ### Answer so far
 
 The Q3 safety result carries over to a legged robot with a learned locomotion policy: the filter kept every episode violation-free on both plants, and the measured tracking error (0.19 m at 95%) is within the pad already in use. The Go2 scores about 0.06 lower than the unicycle, with or without the filter, because it walks slower than commanded. Running on the Go2 also found two stack bugs that could stop the robot for the rest of an episode; both are fixed.
@@ -579,13 +613,15 @@ The Q3 safety result carries over to a legged robot with a learned locomotion po
 The abrupt case (an estimate appearing 1.5-6 m ahead of a robot at full speed) is covered by the sudden-threat test above: no violation when the robot keeps re-detecting, but a single bad first sighting can still be unsafe. The Q3 check now also stands on 100 sites (Table 15 and its replication).
 
 **Not yet tested:**
-- physical rubble (the policy was trained on flat ground).
+- rubble at more than 40 sites, several noise levels and a larger pad; fewer falls on rubble (the rough policy still falls in 6 of 40 episodes).
 
 ## Limitations
 
-Survivors are a crude stand-in for people: three states, constant-speed motion, a fixed response model, and handling times, decay rates and self-evacuation that are modelling choices. The Q4 triage effect is small (+0.006 +/- 0.004 pooled over 700 sites on the fixed stack, not detectable at 200 sites, and +0.004 +/- 0.004 on the earlier stack) and exists only when the robot is capacity-limited and state sets the handling time; it should not be read as a measured benefit for real triage. Locomotion in the main results is a reduced-order unicycle with a measured tracking-error pad. A full Go2 model with a learned policy has been added in MuJoCo (not Isaac Sim, as proposed) and checked for Q3 only, on 100, 40 and 20 sites, on flat ground with rubble kept as a speed cap (see above). Two stack fixes made for it (routing around safety regions, letting confirmed tracks fade) are reflected in Tables 6-11, which were rerun on the fixed stack (the Q4 ablation panels and Table 12 were not). The track-retention gain is shown in the Q1-Q2 simulator only and did not carry over to the closed-loop stack (it is off by default there). Priority ordering was null across a grid of horizons and survivor counts, so its small gain is not explained by T being long. Detections are matched to tracks with a wide gate, so two nearby survivors can share one track and one of them can be lost when the other is rescued. The drone detector is parametric noise, not image-derived. The oracle for Q3-Q4 uses survivors' initial positions. The lower-confidence safety result (zero violations at 0.5-0.7) depends on the 1 m clearance and the fixed margins and was checked at three confidence levels and two noise levels, not at every setting. The Q5 observers are simulated people (the learned one is trained on synthetic walkers), not human subjects.
+Survivors are a crude stand-in for people: three states, constant-speed motion, a fixed response model, and handling times, decay rates and self-evacuation that are modelling choices. The Q4 triage effect is small (+0.006 +/- 0.004 pooled over 700 sites on the fixed stack, not detectable at 200 sites, and +0.004 +/- 0.004 on the earlier stack) and exists only when the robot is capacity-limited and state sets the handling time; it should not be read as a measured benefit for real triage. Locomotion in the main results is a reduced-order unicycle with a measured tracking-error pad. A full Go2 model with a learned policy has been added in MuJoCo (not Isaac Sim, as proposed) and checked for Q3 only, on 100, 40 and 20 sites, on flat ground with rubble kept as a speed cap, plus a 40-site check on a rubble heightfield with a policy retrained on rough terrain, where the filter still gave zero violations but the robot fell in 6 of 40 episodes (see above). Two stack fixes made for it (routing around safety regions, letting confirmed tracks fade) are reflected in Tables 6-11, which were rerun on the fixed stack (the Q4 ablation panels and Table 12 were not). The track-retention gain is shown in the Q1-Q2 simulator only and did not carry over to the closed-loop stack (it is off by default there). Priority ordering was null across a grid of horizons and survivor counts, so its small gain is not explained by T being long. Detections are matched to tracks with a wide gate, so two nearby survivors can share one track and one of them can be lost when the other is rescued. The drone detector is parametric noise, not image-derived. The oracle for Q3-Q4 uses survivors' initial positions. The lower-confidence safety result (zero violations at 0.5-0.7) depends on the 1 m clearance and the fixed margins and was checked at three confidence levels and two noise levels, not at every setting. The Q5 observers are simulated people (the learned one is trained on synthetic walkers), not human subjects.
 
 ## Layout
+
+`sim.md` documents the simulators, the policy training and how to reproduce the MuJoCo results.
 
 ```
 rescue/
