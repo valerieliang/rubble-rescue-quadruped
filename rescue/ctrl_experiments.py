@@ -33,7 +33,7 @@ BEH_KEYS = set(BehaviorConfig.__dataclass_fields__) - {"reliability"}
 SITE_KEYS = {"n_survivors", "frac_mobile"}
 SIM_KEYS = {"sigma_meas", "sensor_radius"}
 STACK_KEYS = set(StackConfig.__dataclass_fields__) - {"reliability"}
-META = {"seed", "variant", "label", "T", "plant"}   # plant: "unicycle" (default) or "mujoco" (learned Go2)
+META = {"seed", "variant", "label", "T", "plant", "policy"}   # plant: "unicycle" (default), "mujoco" (learned Go2, flat) or "mujoco_rubble"; policy: onnx path
 
 
 def usable_seeds(n: int, start: int = 0) -> list[int]:
@@ -98,9 +98,9 @@ def run_ctrl_job(job: dict) -> dict:
     site = make_site(seed, ov.get("n_survivors"), ov.get("frac_mobile"))
     sim_kw = {k: v for k, v in ov.items() if k in SIM_KEYS}
     plant = None
-    if job.get("plant") == "mujoco":
+    if job.get("plant") in ("mujoco", "mujoco_rubble"):
         from .mj_plant import Go2MujocoPlant   # local import: needs mujoco and onnxruntime
-        plant = Go2MujocoPlant()
+        plant = Go2MujocoPlant(rubble=job["plant"] == "mujoco_rubble", policy=job.get("policy"))
     log = run_episode_ctrl(site, prior, cfg, seed, variant, T=T, behavior=beh,
                            dwell=REWARDS[ov.get("reward", "base")].dwell, plant=plant, **sim_kw)
     rw = ov.get("reward", "base")

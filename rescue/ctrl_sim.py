@@ -104,6 +104,8 @@ def run_episode_ctrl(site: Site, prior_cfg: PriorConfig, stack_cfg: StackConfig,
                 d = stack.goal(pos) - pos
                 heading = float(np.arctan2(d[1], d[0])) if np.hypot(*d) > 1e-9 else 0.0
                 if plant is not None:
+                    if hasattr(plant, "set_site"):
+                        plant.set_site(site)       # rubble plants build this site's heightfield
                     plant.reset(pos, heading)
             for tr_mean, ph in stack.snapshot():
                 sid = min(pending | set(log.rescue_times), key=lambda s: np.linalg.norm(spos[s] - tr_mean))

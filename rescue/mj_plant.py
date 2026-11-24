@@ -15,7 +15,8 @@ What matches training (from the run's ``env.yaml`` and the ONNX metadata):
   * position actuators with the training gains and effort limits, joint armature, feet-only collision
     against a flat plane, the training solver settings.
 
-What does not: the terrain is a flat plane (rubble stays a speed cap in the rescue stack), contact
+What does not: the terrain is a flat plane unless ``rubble=True`` (then ``set_site`` builds a heightfield
+from the site's rubble and hazard regions; the rescue stack still also caps speed there), contact
 parameters of the plane are MuJoCo defaults (training randomizes foot friction), and the policy was
 trained on commands vx in [-0.5, 1.0] m/s, vy in [-0.5, 0.5] and yaw rate in [-1.0, 1.0] rad/s, so
 ``step`` clips the unicycle command to that range.
@@ -37,6 +38,13 @@ DECIMATION = 4
 PERIOD_STEPS = 30      # gait phase period 0.6 s / 0.02 s
 INIT_HEIGHT = 0.32     # m, base height at reset (training init state)
 OBS_NAMES = ("base_ang_vel", "projected_gravity", "command", "phase", "joint_pos", "joint_vel", "actions")
+# The rough-terrain policy also sees a height scan: a 1.6 m x 1.0 m grid of rays (0.1 m apart, 17 x 11), aligned
+# with the base's yaw, cast straight down from the base_link origin; the observation is base height minus hit
+# height, 5.0 for a miss, times 1/5 (mjlab ``height_scan`` on the ``terrain_scan`` sensor, rows = y, columns = x).
+SCAN_X = np.arange(-0.8, 0.8 + 0.05, 0.1)
+SCAN_Y = np.arange(-0.5, 0.5 + 0.05, 0.1)
+SCAN_MAX = 5.0
+N_SCAN = len(SCAN_X) * len(SCAN_Y)      # 187
 # Training observation noise (uniform, +-): applied when ``obs_noise`` is on.
 NOISE = {"ang_vel": 0.2, "gravity": 0.05, "joint_pos": 0.01, "joint_vel": 1.5}
 # Fallbacks if the ONNX carries no metadata: kind -> (kp, kd, effort limit N m, armature).
@@ -63,8 +71,10 @@ def _read_metadata(sess: ort.InferenceSession) -> dict:
     return out
 
 
-def build_model(xml: Path, joints: list[str], kp: list[float], kd: list[float]) -> mujoco.MjModel:
-    """The training robot: ``go2.xml`` + position actuators + feet-only collision + a plane."""
+def build_model(xml: Path, joints: list[str], kp: list[float], kd: list[float],
+                terrain: tuple | None = None) -> mujoco.MjModel:
+    """The training robot: ``go2.xml`` + position actuators + feet-only collision + a plane, or, if
+    ``terrain = (heights, (xmin, ymin, xmax, ymax))`` is given, a heightfield instead of the plane."""
     spec = mujoco.MjSpec.from_file(str(xml))
     o = spec.option
     o.timestep = PHYS_DT
@@ -89,8 +99,18 @@ def build_model(xml: Path, joints: list[str], kp: list[float], kd: list[float]) 
             g.solimp = [0.9, 0.95, 0.023, 0.5, 2.0]
         else:
             g.condim = 1
-    spec.worldbody.add_geom(name="floor", type=mujoco.mjtGeom.mjGEOM_PLANE, size=[0, 0, 0.05],
-                            contype=1, conaffinity=1)
+    if terrain is None:
+        spec.worldbody.add_geom(name="floor", type=mujoco.mjtGeom.mjGEOM_PLANE, size=[0, 0, 0.05],
+                                contype=1, conaffinity=1)
+    else:
+        heights, (x0, y0, x1, y1) = terrain
+        ny, nx = heights.shape
+        top = max(float(heights.max()), 1e-3)
+        hf = spec.add_hfield(name="rubble", nrow=ny, ncol=nx,
+                             size=[(x1 - x0) / 2, (y1 - y0) / 2, top, 0.5])
+        hf.userdata = (heights / top).astype(np.float32).ravel().tolist()
+        spec.worldbody.add_geom(name="floor", type=mujoco.mjtGeom.mjGEOM_HFIELD, hfieldname="rubble",
+                                pos=[(x0 + x1) / 2, (y0 + y1) / 2, 0.0], contype=1, conaffinity=1)
 
     for name, p, d in zip(joints, kp, kd):     # actuators in the policy's joint order
         kind = name.split("_")[1]
@@ -113,21 +133,28 @@ class Go2MujocoPlant:
 
     def __init__(self, asset_dir: Path | str = ASSET_DIR, policy: Path | str | None = None,
                  v_range: tuple[float, float] = (-0.5, 1.0), w_max: float = 1.0,
-                 obs_noise: bool = False, seed: int = 0, strict: bool = True):
+                 obs_noise: bool = False, seed: int = 0, strict: bool = True, rubble: bool = False):
+        """``rubble``: ``set_site`` turns the site's rubble and hazard regions into a heightfield
+        (``mj_terrain.make_heights``); otherwise the ground is a flat plane."""
         asset_dir = Path(asset_dir)
+        self.rubble = rubble
+        self._asset_dir = asset_dir
         so = ort.SessionOptions()
         so.intra_op_num_threads = so.inter_op_num_threads = 1    # one thread: experiments run one plant per worker
         self.sess = ort.InferenceSession(str(policy or asset_dir / "policy.onnx"), sess_options=so,
                                          providers=["CPUExecutionProvider"])
         inp = self.sess.get_inputs()[0]
-        if inp.shape[-1] != 47:
-            raise ValueError(f"policy expects {inp.shape[-1]} inputs, this plant builds 47 (see module docstring)")
+        if inp.shape[-1] not in (47, 47 + N_SCAN):
+            raise ValueError(f"policy expects {inp.shape[-1]} inputs, this plant builds 47 or {47 + N_SCAN} "
+                             f"(see module docstring)")
+        self.scan = inp.shape[-1] == 47 + N_SCAN          # rough-terrain policy: adds the height scan
         self._in = inp.name
 
         meta = _read_metadata(self.sess)
         if meta:
-            if strict and meta.get("observation_names") and tuple(meta["observation_names"]) != OBS_NAMES:
-                raise ValueError(f"observation layout differs from the plant's: {meta['observation_names']} vs {OBS_NAMES}")
+            expect = OBS_NAMES + (("height_scan",) if self.scan else ())
+            if strict and meta.get("observation_names") and tuple(meta["observation_names"]) != expect:
+                raise ValueError(f"observation layout differs from the plant's: {meta['observation_names']} vs {expect}")
             self.joints = meta["joint_names"]
             self.default = np.array(meta["default_joint_pos"])
             kp, kd = meta["joint_stiffness"], meta["joint_damping"]
@@ -142,14 +169,37 @@ class Go2MujocoPlant:
             self.scale = 0.25
 
         self.scale = np.asarray(self.scale, float)
-        self.model = build_model(asset_dir / "model" / "xmls" / "go2.xml", self.joints, kp, kd)
-        self.data = mujoco.MjData(self.model)
-        self.qadr = np.array([self.model.joint(j).qposadr[0] for j in self.joints])
-        self.vadr = np.array([self.model.joint(j).dofadr[0] for j in self.joints])
+        self._kp, self._kd = kp, kd
+        self._build(None)
         self.v_range, self.w_max = v_range, w_max
         self.obs_noise = obs_noise
         self.rng = np.random.default_rng(seed)
         self.reset()
+
+    def _build(self, terrain) -> None:
+        self._terrain = terrain
+        self.model = build_model(self._asset_dir / "model" / "xmls" / "go2.xml", self.joints, self._kp, self._kd,
+                                 terrain)
+        self.data = mujoco.MjData(self.model)
+        self._base_id = self.model.body("base_link").id
+        self.qadr = np.array([self.model.joint(j).qposadr[0] for j in self.joints])
+        self.vadr = np.array([self.model.joint(j).dofadr[0] for j in self.joints])
+
+    def set_site(self, site) -> None:
+        """Build this site's ground (a no-op on the flat plane). Call before ``reset``."""
+        if not self.rubble:
+            return
+        from .mj_terrain import make_heights
+        self._build(make_heights(site))
+
+    def ground_height(self, xy) -> float:
+        """Terrain height at ``xy`` (nearest heightfield cell; 0 on the plane)."""
+        if self._terrain is None:
+            return 0.0
+        h, (x0, y0, x1, y1) = self._terrain
+        c = int(np.clip(round((xy[0] - x0) / (x1 - x0) * (h.shape[1] - 1)), 0, h.shape[1] - 1))
+        r = int(np.clip(round((xy[1] - y0) / (y1 - y0) * (h.shape[0] - 1)), 0, h.shape[0] - 1))
+        return float(h[r, c])
 
     # ------------------------------------------------------------------ state
 
@@ -157,7 +207,7 @@ class Go2MujocoPlant:
         """Stand the robot at ``xy`` facing ``yaw`` and let it settle for ``settle`` s of zero command."""
         m, d = self.model, self.data
         mujoco.mj_resetData(m, d)
-        d.qpos[:3] = (xy[0], xy[1], INIT_HEIGHT)
+        d.qpos[:3] = (xy[0], xy[1], INIT_HEIGHT + self.ground_height(xy))
         d.qpos[3:7] = (np.cos(yaw / 2), 0.0, 0.0, np.sin(yaw / 2))
         d.qpos[self.qadr] = self.default
         d.ctrl[:] = self.default
@@ -203,7 +253,38 @@ class Go2MujocoPlant:
         else:
             a = 2 * np.pi * (self.n % PERIOD_STEPS) / PERIOD_STEPS
             phase = np.array([np.sin(a), np.cos(a)])
-        return np.concatenate([ang, grav, cmd, phase, q, qd, self.last_action]).astype(np.float32)
+        parts = [ang, grav, cmd, phase, q, qd, self.last_action]
+        if self.scan:
+            parts.append(self._height_scan())
+        return np.concatenate(parts).astype(np.float32)
+
+    def _height_scan(self) -> np.ndarray:
+        """mjlab's ``terrain_scan`` height observation, from the plane or the heightfield."""
+        pos = self.data.xpos[self._base_id]
+        R = self.data.xmat[self._base_id].reshape(3, 3)
+        fx, fy = R[0, 0], R[1, 0]                                   # base x-axis projected on the ground plane
+        n = max(np.hypot(fx, fy), 1e-6)
+        c, s_ = fx / n, fy / n                                      # yaw alignment
+        gx, gy = np.meshgrid(SCAN_X, SCAN_Y)                        # rows = y, columns = x
+        wx = pos[0] + c * gx - s_ * gy
+        wy = pos[1] + s_ * gx + c * gy
+        hit = self._terrain_at(wx.ravel(), wy.ravel())
+        d = pos[2] - hit
+        d = np.where((d < 0) | (d > SCAN_MAX), SCAN_MAX, d)
+        noise = self.rng.uniform(-0.1, 0.1, d.shape) if self.obs_noise else 0.0
+        return (d + noise) / SCAN_MAX
+
+    def _terrain_at(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+        """Ground height at points (bilinear on the heightfield; 0 on the plane)."""
+        if self._terrain is None:
+            return np.zeros_like(x)
+        h, (x0, y0, x1, y1) = self._terrain
+        u = np.clip((x - x0) / (x1 - x0) * (h.shape[1] - 1), 0, h.shape[1] - 1)
+        v = np.clip((y - y0) / (y1 - y0) * (h.shape[0] - 1), 0, h.shape[0] - 1)
+        i0, j0 = np.floor(u).astype(int), np.floor(v).astype(int)
+        i1, j1 = np.minimum(i0 + 1, h.shape[1] - 1), np.minimum(j0 + 1, h.shape[0] - 1)
+        fu, fv = u - i0, v - j0
+        return ((h[j0, i0] * (1 - fu) + h[j0, i1] * fu) * (1 - fv) + (h[j1, i0] * (1 - fu) + h[j1, i1] * fu) * fv)
 
     def _policy_step(self, cmd: np.ndarray) -> None:
         act = self.sess.run(None, {self._in: self._obs(cmd)[None]})[0][0]
