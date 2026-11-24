@@ -128,15 +128,17 @@ class CBFFilter:
         return chi_radius(self.p.conf_p if conf_p is None else conf_p) * sigma + self.margin_survivor
 
     def filter(self, pos, heading: float, u_nom, v_cap: float, hazards, ellipses):
-        """Minimally modify u_nom = (v, omega). ``ellipses`` is a list of (mu, Sigma)."""
+        """Minimally modify u_nom = (v, omega). ``ellipses`` is a list of (mu, Sigma) or (mu, Sigma, confidence)."""
         P = self.p
         e_t = np.array([np.cos(heading), np.sin(heading)])
         e_p = np.array([-np.sin(heading), np.cos(heading)])
         cp = np.asarray(pos, float) + P.cp_offset * e_t
         c = chi_radius(P.conf_p)
         A, b, hs = [], [], []
-        for mu, S in ellipses:
-            h, g = ellipse_barrier(cp, np.asarray(mu, float), S, c, self.margin_survivor)
+        for el in ellipses:
+            mu, S = el[0], el[1]
+            ce = chi_radius(el[2]) if len(el) > 2 and el[2] is not None else c   # optional per-track confidence
+            h, g = ellipse_barrier(cp, np.asarray(mu, float), S, ce, self.margin_survivor)
             hs.append(h)
             if h < 8.0:           # far barriers cannot bind within the speed limit
                 A.append([g @ e_t, P.cp_offset * (g @ e_p)])

@@ -62,6 +62,7 @@ class StackConfig:
     prompt_gap: float = 3.0
     max_prompts: int = 3
     motion_window: float = 5.0
+    fast_detect: bool = False        # 10 Hz first-detection path: an onboard detection no belief track explains goes to the filter at once
     avg_meas: bool = False           # fuse all 10 Hz detections of the last second (mean, sigma_meas/sqrt(n)), not one
     hint_acc: float = 0.7            # accuracy the robot assumes for the drone's state cue
     reliability: float = 0.8         # q the robot assumes when interpreting prompt responses
@@ -155,6 +156,7 @@ class RescueStack:
         self.last_prompt: dict[int, float] = {}
         self.revealed: set[int] = set()
         self._det_buf: list[Detection] = []
+        self.fast: list[list] = []             # [mean, sigma, t_last] provisional tracks from the 10 Hz path (fast_detect)
         self.target = None
         self.target_key: int | None = None
         self.approach_start = site.start.astype(float).copy()
@@ -219,6 +221,8 @@ class RescueStack:
     def perceive(self, t: float, pos, detected) -> list[PromptRequest]:
         """10 Hz: record motion samples, decide which survivors to prompt / reveal."""
         reqs: list[PromptRequest] = []
+        if self.cfg.fast_detect:
+            self._fast_update(t, detected)
         if self.cfg.avg_meas:
             self._det_buf += list(detected)
         if not (self.cfg.infer_state or self.cfg.comm_oracle):
@@ -246,6 +250,25 @@ class RescueStack:
                 self.revealed.add(key)
                 reqs.append(PromptRequest(key, d.source_id, "reveal"))
         return reqs
+
+    def _fast_update(self, t: float, detected) -> None:
+        """Provisional tracks for detections the belief has no confirmed track for; fused at 10 Hz, dropped once the
+        1 Hz belief holds the survivor (or after 5 s without a detection). Used by the filter only."""
+        confirmed = [tr.mean for tr in self.search.belief.tracks if tr.confirmed]
+        self.fast = [f for f in self.fast if t - f[2] < 5.0
+                     and not any(np.linalg.norm(f[0] - m) < 3.0 for m in confirmed)]
+        for d in detected:
+            if any(np.linalg.norm(d.pos - m) < 3.0 for m in confirmed):
+                continue
+            for f in self.fast:
+                if np.linalg.norm(f[0] - d.pos) < 2.0:
+                    k = f[1] ** 2 / (f[1] ** 2 + self.sigma_meas ** 2)
+                    f[0] = f[0] + k * (np.asarray(d.pos, float) - f[0])
+                    f[1] = max(float(np.sqrt((1 - k) * f[1] ** 2)), self.cfg.sigma_floor)
+                    f[2] = t
+                    break
+            else:
+                self.fast.append([np.asarray(d.pos, float).copy(), max(self.sigma_meas, self.cfg.sigma_floor), t])
 
     def _match(self, p):
         best, bd = None, 3.0
@@ -401,8 +424,11 @@ class RescueStack:
         if not self.cfg.use_cbf:
             self.last_info = {"modified": False, "feasible": True}
             return u_nom
-        ell = [(tr.mean, np.eye(2) * tr.sigma**2) for tr in tracks]
+        from .clearance import is_fresh
+        ell = [(tr.mean, np.eye(2) * tr.sigma**2,
+                self.cfg.conf_fresh if self.cfg.conf_fresh and is_fresh(tr, self.cfg.n_fresh) else None) for tr in tracks]
         ell += [(q, np.eye(2) * self.cfg.sigma_floor**2) for q in self.keepout]
+        ell += [(f[0], np.eye(2) * f[1]**2, self.cfg.conf_fresh or None) for f in self.fast]
         u, info = self.cbf.filter(pos, heading, u_nom, v_cap, self.hazards, ell)
         self.last_info = info
         return u
