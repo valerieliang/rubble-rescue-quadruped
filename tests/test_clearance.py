@@ -80,3 +80,29 @@ def test_safety_violations_counts_hazard_and_survivor_steps():
 
 def test_safety_violations_empty_trajectory():
     assert safety_violations(_site(), RunLog(0, "x"))["violation_rate"] == 0.0
+
+
+def test_fresh_tracks_use_the_higher_confidence_until_enough_detections():
+    from rescue.belief import Belief
+    from rescue.drone_prior import PriorConfig
+    from rescue.interfaces import Detection, Priority
+    b = Belief([], PriorConfig(), sigma_meas=0.5)
+    det = Detection(np.array([5.0, 0.0]), Priority.STABLE, 0)
+    robot = np.zeros(2)
+    conf = []
+    for _ in range(6):
+        b.update(robot, 10.0, [det])               # first detection creates a confirmed track, n_det = 1
+        (reg,) = b.clearance_regions(0.7, 1.0, 0.1, fresh_confidence=0.99, fresh_n=5)
+        conf.append(reg.confidence)
+    assert b.tracks[0].n_det == 6
+    assert conf == [0.99, 0.99, 0.99, 0.99, 0.7, 0.7]       # fresh while n_det < 5
+    (reg,) = b.clearance_regions(0.7, 1.0, 0.1)             # off by default
+    assert reg.confidence == 0.7
+
+
+def test_prior_only_track_is_not_fresh():
+    from rescue.belief import Track
+    from rescue.clearance import clearance_regions
+    t = Track(np.array([3.0, 0.0]), 3.0, 0.8, Priority.STABLE)      # drone prior only: unconfirmed, n_det 0
+    (reg,) = clearance_regions([t], 0.7, 1.0, 0.1, fresh_confidence=0.99, fresh_n=5)
+    assert reg.confidence == 0.7

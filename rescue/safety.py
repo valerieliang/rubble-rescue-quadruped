@@ -123,9 +123,9 @@ class CBFFilter:
     def margin_hazard(self) -> float:
         return self.p.eps_track + self.p.cp_offset
 
-    def region_radius(self, sigma: float) -> float:
+    def region_radius(self, sigma: float, conf_p: float | None = None) -> float:
         """Distance from an (isotropic) belief mean at which the survivor barrier is zero."""
-        return chi_radius(self.p.conf_p) * sigma + self.margin_survivor
+        return chi_radius(self.p.conf_p if conf_p is None else conf_p) * sigma + self.margin_survivor
 
     def filter(self, pos, heading: float, u_nom, v_cap: float, hazards, ellipses):
         """Minimally modify u_nom = (v, omega). ``ellipses`` is a list of (mu, Sigma)."""

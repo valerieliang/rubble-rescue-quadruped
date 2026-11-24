@@ -55,6 +55,8 @@ class StackConfig:
     r_stand: float = 2.5             # standoff distance when no safety region is larger
     sigma_floor: float = 0.5         # belief std floor (survivors may move, so never fully certain)
     r_safe: float = 0.2              # tracks below this existence probability get no barrier
+    conf_fresh: float = 0.0          # >0: confidence for a robot-detected track with fewer than n_fresh detections fused
+    n_fresh: int = 5                 # (the belief updates at 1 Hz, so 5 detections is about 5 s); off while conf_fresh is 0
     # state inference
     prompt_range: float = 6.0
     prompt_gap: float = 3.0
@@ -184,7 +186,8 @@ class RescueStack:
             return out
 
         tracks = [tr for tr in self.search.belief.tracks if tr.r >= self.cfg.r_safe]
-        regions = self.search.belief.clearance_regions(self.cfg.conf_p, self.cfg.d_clear, self.cfg.r_safe)
+        regions = self.search.belief.clearance_regions(self.cfg.conf_p, self.cfg.d_clear, self.cfg.r_safe,
+                                                       self.cfg.conf_fresh, self.cfg.n_fresh)
         regions += [ClearanceRegion(q, np.eye(2) * self.cfg.sigma_floor**2, self.cfg.conf_p, self.cfg.d_clear,
                                     Priority.STABLE, 1.0) for q in self.keepout]
         target = self.target.mean if self.target is not None else np.asarray(self.fallback_wp, float)
@@ -349,7 +352,9 @@ class RescueStack:
         return Observation(obs.t, obs.robot_pos, obs.sensor_radius, dets, obs.rescued), sig
 
     def boundary(self, track) -> float:
-        return self.cbf.region_radius(track.sigma)
+        from .clearance import is_fresh
+        fresh = self.cfg.conf_fresh and is_fresh(track, self.cfg.n_fresh)
+        return self.cbf.region_radius(track.sigma, self.cfg.conf_fresh if fresh else None)
 
     def goal(self, pos) -> np.ndarray:
         """Standoff pose: on the robot's side of the target, outside its safety region."""
