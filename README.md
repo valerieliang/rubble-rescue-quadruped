@@ -61,9 +61,10 @@ Closed-loop Q3-Q5 (control-rate simulator, `ctrl_sim.py`; the Q1-Q2 `sim.py` is 
 
 Full Go2 model in MuJoCo with a learned locomotion policy (initial results, [below](#mujoco-go2-with-a-learned-locomotion-policy-initial-results); how the policies were trained and how to reproduce the simulation is in [`sim.md`](sim.md)):
 
-- `mj_plant.py`: the Go2 robot model and learned velocity policy that `unitree_rl_mjlab` trains, rebuilt in plain MuJoCo, as an optional plant behind `ctrl_sim.py` (`run_episode_ctrl(..., plant=Go2MujocoPlant())`, or `plant="mujoco"` in an experiment job); the unicycle stays the default
-- `sim/go2/`: the trained policy (`policy.onnx`), its training configs and the robot model
-- `scripts/mj_calibrate.py` (tracking and the tracking-error pad), `mj_run_q3.py`, `mj_run_conf.py`, `mj_cbf_stress.py`, `mj_rubble_calibrate.py`, `mj_run_q3_rubble.py` (Q3 checks on both plants, and on a rubble heightfield), `render_mj.py` (all figures in `figures/mujoco/`), `diag_stall.py` (stack-state log of episodes that stop making progress)
+- `mj_plant.py`: the Go2 robot model and learned velocity policy that `unitree_rl_mjlab` trains, rebuilt in plain MuJoCo, as an optional plant behind `ctrl_sim.py` (`run_episode_ctrl(..., plant=Go2MujocoPlant())`, or `plant="mujoco"` / `"mujoco_rubble"` in an experiment job); the unicycle stays the default
+- `sim/go2/`: the flat-trained policy (`policy.onnx`) and the rough-terrain one (`policy_rough.onnx`), their training configs and the robot model
+- `mj_terrain.py`: physical rubble, a heightfield built from a site's rubble and hazard regions (`Go2MujocoPlant(rubble=True)`), with the rough-terrain policy; Q3 on 100 rubble sites ([below](#physical-rubble))
+- `scripts/mj_calibrate.py` (tracking and the tracking-error pad), `mj_run_q3.py`, `mj_run_conf.py`, `mj_cbf_stress.py`, `mj_rubble_calibrate.py`, `mj_run_q3_rubble.py`, `mj_run_q3_rubble_sweep.py`, `mj_run_q3_rubble_margins.py` (Q3 checks on both plants, and on a rubble heightfield at other noise levels, pads and smaller margins), `render_mj.py` (all figures in `figures/mujoco/`), `diag_stall.py` (stack-state log of episodes that stop making progress)
 - Track retention (`PriorSearch(retention=...)`, off by default) and its ablation, a Q2 regime map, a sudden-threat test and a 100-site Go2 Q3 check (see [Track retention](#track-retention-fixing-the-dropped-track-loss), the regime check in Q2 and [Sudden close-range threat](#sudden-close-range-threat))
 - Two stack fixes found on the Go2, on by default: the route goes around survivors' safety regions (`StackConfig.route_around_regions`), and missed detections lower a confirmed track's existence (`StackConfig.forget_stale_tracks`); see [Planner fixes](#planner-fixes-found-on-the-go2). The Q3-Q5 closed-loop tables predate them (Q1-Q2 do not use this stack)
 
@@ -436,9 +437,10 @@ Running the stack on the Go2 exposed a planner deadlock and a belief bug, both f
 
 **Setup.**
 - **Policy.** `Unitree-Go2-Flat` from [`unitree_rl_mjlab`](https://github.com/unitreerobotics/unitree_rl_mjlab): velocity tracking, PPO, 3000 iterations with 4096 environments (about 295M steps, 1 h 23 min on one laptop RTX 5070 Ti under WSL2). At the end of training, episodes ran the full 20 s with almost no falls.
+- **Rough-terrain policy.** `Unitree-Go2-Rough`, 3000 iterations with 2048 environments (4096 did not fit this GPU), about 1 h 55 min; its actor also takes a 17 x 11 height scan. Used only in [Physical rubble](#physical-rubble); everything else uses the flat policy. Details in [`sim.md`](sim.md).
 - **Plant.** `rescue/mj_plant.py` rebuilds the training robot in MuJoCo 3.5.0 (position actuators with the training gains, feet-only collision, the training solver settings) and runs the exported policy at 50 Hz on 200 Hz physics. Joint order, default pose, gains, action scale and the observation layout are read from, and checked against, the policy file's metadata.
 - **Interface.** The stack's 10 Hz `(v, omega)` command becomes the policy's velocity command, clipped to its training range (forward speed -0.5 to 1.0 m/s, yaw rate +/-1.0 rad/s), and the pose comes back from the simulated robot. On this plant the planner and filter also plan with the 1.0 rad/s turn rate (the unicycle uses 1.5).
-- **Unchanged.** The drone detections (`drone_prior.py` noise model), survivors and sensing. The ground is a flat plane; rubble remains a speed cap in the stack, not physical terrain.
+- **Unchanged.** The drone detections (`drone_prior.py` noise model), survivors and sensing. In the checks before [Physical rubble](#physical-rubble) the ground is a flat plane and rubble is only a speed cap in the stack; that section adds a heightfield and a policy trained on rough terrain.
 
 ![The Go2 walking at 1.0 m/s in MuJoCo, one gait cycle](figures/mujoco/go2_walk.png)
 
@@ -555,7 +557,7 @@ The values are the same at both speeds to within 0.01 m. The Go2 stops about 0.1
 
 ### Sudden close-range threat
 
-`scripts/mj_sudden_threat.py`. The head-on test starts 6 m from a survivor the filter has known all along, so the barrier is never violated at the first step. Here the robot walks toward a far goal at 0.5 or 1.0 m/s with no survivor known, and after 3 s a survivor estimate appears 1.5, 2, 2.5, 3, 4 or 6 m ahead (the true survivor is there; the estimate carries the 0.5 m onboard measurement noise). This is what happens when the drone missed a survivor and the onboard detector sees them late, or a track jumps close. The nominal controller never slows down, so only the filter (confidence 0.7, pad 0.25 m, as in the stack) can stop the robot. Two versions: the estimate stays at its first noisy value (worst case), or the robot re-detects at 10 Hz (90% detection probability) and fuses each detection as the stack's belief does. 10 seeds x 2 lateral offsets per cell, both plants, 960 filtered runs and 960 unfiltered.
+`scripts/mj_sudden_threat.py`. The head-on test starts 6 m from a survivor the filter has known all along, so the barrier is never violated at the first step. Here the robot walks toward a far goal at 0.5 or 1.0 m/s with no survivor known, and after 3 s a survivor estimate appears 1.5, 2, 2.5, 3, 4 or 6 m ahead (the true survivor is there; the estimate carries the 0.5 m onboard measurement noise). This is what happens when the drone missed a survivor and the onboard detector sees them late, or a track jumps close. The nominal controller never slows down, so only the filter (confidence 0.7, pad 0.25 m, as in the stack) can stop the robot. Three versions: the estimate stays at its first noisy value (worst case), or the robot re-detects (90% detection probability) and Kalman-fuses each detection into the estimate, either at 10 Hz or at 1 Hz. **The stack's belief updates at 1 Hz, one detection per second**; the 10 Hz version corresponds to the optional `avg_meas` fusion, which is off by default (an earlier version of this section called the 10 Hz case "as in the stack"; it is not). Table 18 is the first run (10 seeds x 2 lateral offsets per cell, both plants, 960 filtered runs and 960 unfiltered); the 1 Hz rows and the sweep below use 30 seeds (60 runs per cell).
 
 **Table 18.** Filtered runs that came within 1 m of the true survivor, out of 20 per cell (closest approach in m in brackets), by how far ahead the estimate appeared.
 
@@ -570,9 +572,51 @@ The values are the same at both speeds to within 0.01 m. The Go2 stops about 0.1
 
 Without the filter every run violated, except where the survivor appeared 6 m ahead of a robot walking at 0.5 m/s (it never got there in time). No falls.
 
-- **With re-detection the filter holds** down to a 1.5 m appearance at full speed: 0 of 480 filtered runs came within 1 m, and the closest approach was 1.07 m (unicycle) and 1.34 m (Go2), both at 1 m/s and a 1.5 m appearance, so the margin there is thin.
+- **With 10 Hz re-detection the filter holds** down to a 1.5 m appearance at full speed: 0 of 480 filtered runs came within 1 m (0 of 1,440 in the 30-seed rerun), and the closest approach was 1.07 m (unicycle) and 1.34 m (Go2), both at 1 m/s and a 1.5 m appearance, so the margin there is thin. **This is not the stack's update rate.** At 1 Hz it does not hold at 1.5 m and 1 m/s (Table 18b).
 - **With one bad sighting it can be beaten.** The violations in the one-estimate rows come from the seeds whose first estimate was off by 1.0 m or more (the median first-sighting error was 0.43 m). The filter keeps about 2.3-2.5 m from the *estimate*, so a first sighting wrong by more than roughly 1.3 m toward the robot, never corrected, puts the robot inside 1 m of the true survivor. At confidence 0.7 the region around a fresh track is small (0.8 m), so this is where a higher confidence would matter again, at the cost reported in Q3. The 1.5-2 m appearances are also partly unavoidable, since the barrier is already violated when the survivor appears.
 - **The Go2 behaves like the unicycle**, with 0.1-0.3 m more margin at 0.5 m/s, consistent with Table 17.
+
+**Table 18b.** The same test with 1 Hz re-detection, the stack's belief update rate (`scripts/mj_sudden_fresh.py`, 30 seeds x 2 lateral offsets = 60 filtered runs per cell). Runs within 1 m of the true survivor, closest approach in m in brackets. Top: confidence 0.7 everywhere (the stack's default). Bottom: confidence 0.99 on fresh tracks (fewer than 5 detections fused), 0.7 after.
+
+| Confidence | Plant, speed (m/s) | 1.5 m | 2.0 m | 2.5 m | 3.0 m | 4.0 m | 6.0 m |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 0.7 | unicycle 0.5 | 0 (1.08) | 0 (1.44) | 0 (1.67) | 0 (1.73) | 0 (1.96) | 0 (2.26) |
+| 0.7 | unicycle 1.0 | **7** (0.39) | 0 (1.12) | 0 (1.50) | 0 (1.59) | 0 (1.68) | 0 (1.78) |
+| 0.7 | Go2 0.5 | 0 (1.18) | 0 (1.52) | 0 (1.72) | 0 (1.79) | 0 (2.01) | 0 (2.53) |
+| 0.7 | Go2 1.0 | **2** (0.72) | 0 (1.32) | 0 (1.56) | 0 (1.63) | 0 (1.71) | 0 (1.81) |
+| 0.99 fresh | unicycle 0.5 | 0 (1.14) | 0 (1.78) | 0 (2.14) | 0 (2.19) | 0 (2.21) | 0 (2.33) |
+| 0.99 fresh | unicycle 1.0 | **5** (0.62) | 0 (1.29) | 0 (1.96) | 0 (2.09) | 0 (2.00) | 0 (2.06) |
+| 0.99 fresh | Go2 0.5 | 0 (1.21) | 0 (1.88) | 0 (2.15) | 0 (2.20) | 0 (2.22) | 0 (2.55) |
+| 0.99 fresh | Go2 1.0 | **1** (0.90) | 0 (1.66) | 0 (2.04) | 0 (2.11) | 0 (2.11) | 0 (2.07) |
+
+At the stack's rate, 9 of 1,440 filtered runs violate, all at a 1.5 m appearance and 1 m/s, where the barrier is already breached when the survivor appears; from 2 m on, none.
+
+#### Higher confidence on fresh tracks
+
+The weak spot is a bad first sighting. `StackConfig.conf_fresh` / `n_fresh` (off by default) give a robot-detected track with fewer than `n_fresh` detections fused a higher confidence than `conf_p`; tracks that only have the drone prior keep `conf_p`. Sweep over `scripts/mj_sudden_fresh.py` (1,440 filtered runs per entry; the fresh window did not change any count, so one column per confidence):
+
+**Table 18c.** Filtered runs within 1 m, out of 1,440, by confidence on fresh tracks.
+
+| Re-detection | 0.7 (default) | 0.9 | 0.95 | 0.99 |
+| --- | --- | --- | --- | --- |
+| None (first estimate never corrected) | 103 (closest 0.07 m) | 65 | 43 | 10 (0.55 m) |
+| 1 Hz (the stack) | 9 (0.39 m) | 8 | 7 | 6 (0.62 m) |
+| 10 Hz (`avg_meas`) | 0 | 0 | 0 | 0 |
+
+**Table 18d.** Cost on rubble (`scripts/mj_run_q3_rubble_conf.py`, `mj_run_q3_rubble_fresh.py`; rough policy, 100 sites, sigma_meas 0.5 m, pad 0.25 m). No clearance violations, hazard entries or falls in any row.
+
+| Confidence | Score | Rescue rate | Min. distance (m) |
+| --- | --- | --- | --- |
+| 0.7 everywhere (Table 20) | 0.670 | 0.89 | 2.41 |
+| 0.9 everywhere | 0.621 | 0.87 | 2.69 |
+| 0.95 everywhere | 0.561 | 0.82 | 2.75 |
+| 0.99 everywhere | 0.487 | 0.75 | 2.97 |
+| 0.95 on fresh tracks (5 detections) | 0.666 | 0.90 | 2.36 |
+| 0.99 on fresh tracks (5 detections) | 0.667 | 0.89 | 2.42 |
+| 0.99 on fresh tracks (10 detections) | 0.653 | 0.89 | 2.41 |
+
+- **A higher confidence fixes the never-corrected case** (103 to 10 of 1,440 at 0.99), but that case does not arise in the stack, which re-detects at 1 Hz. At 1 Hz the baseline already has only 9 violations, all at the hardest cell, and 0.99 on fresh tracks removes 3 of them. Those that remain are probably set by stopping distance (not checked).
+- **Applied to every track the cost is large** (0.99: -0.18 score, -14 points of rescue rate on rubble). **Limited to fresh tracks it is close to free** (-0.003 at 5 detections, -0.017 at 10), because the window is short. The rule is therefore available but left off: the benefit at the stack's update rate is small (3 of 1,440 runs) and was only measured in this test.
 
 ### Physical rubble
 
@@ -603,10 +647,57 @@ Until here the Go2 walked on a flat plane and rubble was only a speed cap in the
 | Go2, rubble, rough policy | no filter | 0.682 | 0.90 | 0.61 | 0.01 | 0 |
 
 - **Safety holds on rubble.** With the filter: no clearance violations and no hazard entries in 100 episodes (closest approach 2.41 m with the rough policy); without it 61% of episodes violated.
-- **The flat-trained policy is not enough on rubble:** it fell in 42 of 100 filtered episodes (rescue rate 0.71) and its 95% tracking error (0.59 m) is more than twice the 0.25 m pad. The rough-trained policy did not fall in any of the 200 episodes. Its 95% tracking error on rubble is 0.36 m, still above the pad; the pad was left at 0.25 m because the filtered episodes had no violations (the fixed margins keep the robot about 2.4 m from survivors, as in Q3).
+- **The flat-trained policy is not enough on rubble:** it fell in 42 of 100 filtered episodes (rescue rate 0.71) and its 95% tracking error (0.59 m) is more than twice the 0.25 m pad. The rough-trained policy did not fall in any of the 200 episodes. Its 95% tracking error on rubble is 0.36 m, still above the pad; the pad was left at 0.25 m because the filtered episodes had no violations (the fixed margins keep the robot about 2.4 m from survivors, as in Q3). A 0.40 m pad and noise up to 2.0 m changed nothing (Table 21).
 - **The Go2 costs the same on rubble as on flat ground.** Paired by site, the rough-policy Go2 scores 0.068 +/- 0.015 below the unicycle (flat ground: 0.064 +/- 0.015; the flat policy on rubble: 0.179 +/- 0.036); the filter's own cost is -0.012 +/- 0.013.
 - **A bug in the first 40-site run.** The heightfield ended at the site bounds and a robot walking past the edge fell off the map, which gave 6 of 40 falls with the rough policy. The terrain now has a 10 m flat margin and the numbers above are from the rerun on 100 sites.
-- This is one noise level and one pad. Hazard ground is still hard (9 of 200 falls and 0.80 m tracking error in Table 19), but the filter keeps the robot out of it.
+- Hazard ground is still hard (9 of 200 falls and 0.80 m tracking error in Table 19), but the filter keeps the robot out of it. Other noise levels and a larger pad are in Table 21.
+
+**Table 21.** Q3 on rubble at other noise levels and with a larger pad (`scripts/mj_run_q3_rubble_sweep.py`, rough policy, 100 sites, confidence 0.7). The 0.5 m / 0.25 m rows are from Table 20; the no-filter run does not depend on the pad.
+
+| sigma_meas | Pad | Variant | Score | Rescue rate | Episodes with clearance violation | Min. distance (m) | Falls |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 0.5 m | 0.25 m | full | 0.670 | 0.89 | 0.00 | 2.41 | 0 |
+| 0.5 m | - | no filter | 0.682 | 0.90 | 0.61 | 0.01 | 0 |
+| 1.0 m | 0.25 m | full | 0.560 | 0.83 | 0.00 | 2.39 | 0 |
+| 1.0 m | - | no filter | 0.576 | 0.85 | 0.59 | 0.01 | 0 |
+| 2.0 m | 0.25 m | full | 0.523 | 0.75 | 0.00 | 2.35 | 0 |
+| 2.0 m | - | no filter | 0.537 | 0.78 | 0.63 | 0.01 | 0 |
+| 0.5 m | 0.40 m | full | 0.663 | 0.89 | 0.00 | 2.53 | 0 |
+
+- **No violations at any setting.** 500 filtered and unfiltered episodes across three noise levels and two pads: the filtered runs had no clearance violations, no hazard entries and no falls; 59-63% of the unfiltered episodes violated at every noise level.
+- **The pad is not what is being tested.** The 0.25 m pad is below the measured 0.36 m tracking error, and 0.40 m is above it, yet the results are the same: score 0.663 vs. 0.670, rescue rate 0.89 in both, and the closest approach grows by 0.12 m (the extra pad is 0.15 m). The robot stays about 2.4 m from survivors because of the confidence ellipse and the other fixed margins, so the tracking pad is never close to being used. This shows that 0.25 m is enough at these margins, not that it is enough in general.
+- **The filter's cost is small and does not grow with noise** (0.012-0.016 score, 2-3 points of rescue rate at every level). The score falls with noise (0.67, 0.56, 0.52) for both variants, which is the noise itself, not the filter.
+- **The no-filter baseline barely depends on noise**, so these runs do not show the filter protecting more at high noise, only equally.
+
+**Table 22.** Q3 on rubble with smaller safety margins (`scripts/mj_run_q3_rubble_margins.py`, rough policy, 100 sites, sigma_meas 0.5 m, full stack). The survivor barrier sits at `c_p * sigma + d_clear + pad + 0.25 m` (control-point offset) from the belief mean; a violation is the robot centre within 1 m of a survivor. The `d_clear` 0.4, 0.25 and 0 rows are a second run (`... margins.py 100 16 low`).
+
+| Confidence | Pad | d_clear | Score | Rescue rate | Episodes with clearance violation | Min. distance (m) | Hazard entries | Falls |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0.7 (default) | 0.25 m | 1.0 m | 0.670 | 0.89 | 0.00 | 2.41 | 0 | 0 |
+| 0.5 | 0.25 m | 1.0 m | 0.670 | 0.89 | 0.00 | 2.18 | 0 | 0 |
+| 0.5 | 0 | 1.0 m | 0.667 | 0.89 | 0.00 | 2.02 | 0 | 0 |
+| 0.3 | 0.25 m | 1.0 m | 0.679 | 0.91 | 0.00 | 1.97 | 0 | 0 |
+| 0.3 | 0 | 1.0 m | 0.673 | 0.89 | 0.00 | 1.81 | 0 | 0 |
+| 0.1 | 0.25 m | 1.0 m | 0.674 | 0.90 | 0.00 | 1.82 | 0 | 0 |
+| 0.1 | 0 | 1.0 m | 0.676 | 0.90 | 0.00 | 1.66 | 0 | 0 |
+| 0.01 | 0.25 m | 1.0 m | 0.681 | 0.90 | 0.00 | 1.75 | 0 | 0 |
+| 0.01 | 0 | 1.0 m | 0.675 | 0.90 | 0.00 | 1.49 | 0 | 0 |
+| 0.01 | 0 | 0.75 m | 0.679 | 0.90 | 0.00 | 1.25 | 0 | 0 |
+| 0.01 | 0 | 0.5 m | 0.678 | 0.90 | 0.00 | 1.00 | 0 | 0 |
+| 0.01 | 0 | 0.4 m | 0.679 | 0.90 | 0.11 | 0.87 | 0 | 0 |
+| 0.01 | 0 | 0.25 m | 0.681 | 0.90 | 0.25 | 0.79 | 0 | 0 |
+| 0.01 | 0 | 0 | 0.679 | 0.90 | 0.33 | 0.54 | 0 | 0 |
+
+- **Confidence and the tracking pad can go to zero without a violation.** With confidence 0.01 and no pad (so the ellipse term and the pad are both gone) the 100 episodes still had no clearance violations, no hazard entries and no falls, although the measured tracking error on rubble (0.36 m at 95%) is larger than the 0.25 m pad. The flat-ground result that a lower confidence is free carries over to rubble.
+- **Violations start when `d_clear` itself is cut.** With confidence 0.01 and no pad the closest approach is about `d_clear` + 0.5 m (1.25 m at 0.75, 1.00 m at 0.5); below `d_clear` 0.5 m it crosses the 1 m line: 11% of episodes at 0.4 m, 25% at 0.25 m, 33% at 0. The 0.5 m beyond `d_clear` is likely the control-point offset plus the robot's overshoot past the barrier; we did not separate the two. So the slack the pad and the ellipse were thought to provide is real, but the filter's own required clearance is what keeps the robot out of the 1 m zone.
+- **Score does not improve as the margins shrink** (0.667-0.681 throughout, rescue rate 0.89-0.91). A smaller margin buys no extra rescues in this benchmark; we did not investigate why (rescues are triggered by sensing range, which the margins do not change, but this was not checked).
+- The pad is still untested against a policy with a larger tracking error than the rough one; this sweep only shows that 0.25 m is not binding for it.
+
+![Violations and closest approach vs. d_clear on rubble](figures/mujoco/rubble_margins.png)
+
+**Figure 20.** Left: fraction of the 100 rubble episodes with a clearance violation against the required clearance `d_clear`, with confidence 0.01 and no pad (so `d_clear` is the only margin left); from Table 22. Right: the closest approach in those episodes (solid: the closest of 100; faded: the median episode) against the 1 m violation line and a `d_clear` + 0.5 m guide. The gray circles at `d_clear` 1.0 are the closest approaches of the other confidence and pad settings in Table 22 (1.66-2.41 m). `scripts/plot_rubble_margins.py`.
+
+**What the sweep shows.** On rubble, the one margin that decides safety is the required clearance itself: the confidence ellipse, the tracking pad and the noise level all had slack, and the closest approach followed `d_clear` + about 0.5 m down to the 1 m line. Nothing in these runs shows the pad or the ellipse doing work; they are not what keeps the robot out of the 1 m zone here.
 
 ![Site 74 on rubble](figures/mujoco/go2_rubble_site_074.png)
 
@@ -616,10 +707,12 @@ Until here the Go2 walked on a flat plane and rubble was only a speed cap in the
 
 The Q3 safety result carries over to a legged robot with a learned locomotion policy: the filter kept every episode violation-free on both plants, and the measured tracking error (0.19 m at 95%) is within the pad already in use. The Go2 scores about 0.06 lower than the unicycle, with or without the filter, because it walks slower than commanded. Running on the Go2 also found two stack bugs that could stop the robot for the rest of an episode; both are fixed.
 
-The abrupt case (an estimate appearing 1.5-6 m ahead of a robot at full speed) is covered by the sudden-threat test above: no violation when the robot keeps re-detecting, but a single bad first sighting can still be unsafe. The Q3 check now also stands on 100 sites (Table 15 and its replication).
+The abrupt case (an estimate appearing 1.5-6 m ahead of a robot at full speed) is covered by the sudden-threat test above: no violation from 2 m on at the stack's 1 Hz update rate, but 9 of 1,440 runs violate at a 1.5 m appearance and 1 m/s (and a bad first sighting that is never corrected can be unsafe at any distance, though the stack does not re-detect that slowly). A higher confidence on fresh tracks (`conf_fresh`, off by default) removes 3 of those 9 at almost no cost (Tables 18b-18d). The Q3 check now also stands on 100 sites (Table 15 and its replication).
+
+On physical rubble (a heightfield, with a policy retrained on rough terrain) the filter again gave no violations in 100 sites, and the rough-trained Go2 did not fall, while the flat-trained policy fell in 42 of 100 episodes (Tables 19-20); this held at noise of 1.0 and 2.0 m and with a 0.40 m pad (Table 21), though the robot stays about 2.4 m from survivors, so the pad is never close to binding; shrinking the margins (confidence 0.01, no pad) still gave no violations, which only appeared once `d_clear` itself was cut to 0.4 m or less (Table 22); the Go2's score gap to the unicycle is the same on rubble as on flat ground (about 0.065).
 
 **Not yet tested:**
-- rubble at several noise levels and with a larger pad (one level, 0.25 m, so far); hazard ground, which the rough policy still crosses poorly.
+- hazard ground, which the rough policy still crosses poorly.
 
 ## Limitations
 
@@ -644,8 +737,10 @@ rescue/
   clearance.py, mpc.py, cbf.py, behavior.py, observer.py   # standalone Q3-Q5 components
   ctrl_sim.py, stack.py, ctrl_mpc.py, safety.py, ctrl_behavior.py, legibility.py,
   approach.py, ctrl_experiments.py                          # closed-loop Q3-Q5
-  mj_plant.py      # MuJoCo Go2 + learned locomotion policy, optional plant for ctrl_sim
-sim/go2/           # trained policy (policy.onnx), its training configs, the Go2 MuJoCo model
+  mj_plant.py      # MuJoCo Go2 + learned locomotion policy (flat or rough-terrain), optional plant for ctrl_sim
+  mj_terrain.py    # rubble heightfield from a Site's regions
+sim/go2/           # trained policies (policy.onnx flat, policy_rough.onnx rough), their training configs, the Go2 MuJoCo model
+sim.md             # simulators, policy training and how to reproduce the MuJoCo results
 scripts/smoke_test.py   # compare methods over N sites
 scripts/run_sweeps.py   # Q1/Q2 sweeps -> runs/*.csv
 scripts/plot_results.py # figures from runs/*.csv
@@ -658,11 +753,14 @@ scripts/run_retention.py, run_retention_checks.py, plot_retention.py   # track-r
 scripts/ctrl_run_retention.py   # retention in the closed-loop stack
 scripts/run_regime.py, run_reward_shape.py, run_reward_weights.py   # Q2 priority vs. nearest-first over horizon / survivor count, reward decay, and class weights
 scripts/mj_sudden_threat.py   # sudden close-range threat on both plants
+scripts/mj_sudden_fresh.py   # sudden threat with a higher confidence on fresh tracks (single / 10 Hz / 1 Hz re-detection)
+scripts/mj_run_q3_rubble_conf.py, mj_run_q3_rubble_fresh.py   # cost of a higher confidence on rubble: every track vs. fresh tracks only
 scripts/profile_layers.py   # per-layer compute timing
 scripts/render_rollout.py, render_pipeline.py   # filtered vs. unfiltered rollout figure, pipeline diagram
 scripts/ctrl_run_consistency.py   # closed-loop sim vs. the frozen Q1 trends
 scripts/ctrl_stats.py, ctrl_plot.py   # paired-difference tables and figures
 scripts/mj_calibrate.py, mj_run_q3.py, mj_run_conf.py, mj_cbf_stress.py, render_mj.py   # MuJoCo Go2 checks and figures
+scripts/mj_rubble_calibrate.py, mj_run_q3_rubble.py, mj_run_q3_rubble_sweep.py, mj_run_q3_rubble_margins.py, plot_rubble_margins.py, render_mj_rubble.py   # Go2 on a rubble heightfield: tracking and falls, Q3, Q3 at other noise levels and pads, smaller margins, figure
 scripts/diag_stall.py   # logs the stack's state in episodes that stall (old stack vs. the fixes)
 tests/
 docs/INTERFACES.md
@@ -697,8 +795,25 @@ PYTHONPATH=. python scripts/mj_calibrate.py      # tracking checks and the track
 PYTHONPATH=. python scripts/mj_run_q3.py 40      # Q3 on both plants -> runs/mj_q3.csv
 PYTHONPATH=. python scripts/mj_run_conf.py 20    # smaller safety regions, pad on/off -> runs/mj_conf.csv
 PYTHONPATH=. python scripts/mj_cbf_stress.py     # head-on stress test of the filter
+PYTHONPATH=. python scripts/mj_rubble_calibrate.py --n 200 --policy sim/go2/policy_rough.onnx   # tracking and falls on rubble
+PYTHONPATH=. python scripts/mj_run_q3_rubble.py 100 16   # Q3 on rubble -> runs/mj_q3_rubble.csv
+PYTHONPATH=. python scripts/mj_run_q3_rubble_sweep.py 100 16   # rubble at sigma_meas 1.0 / 2.0 m and pad 0.40 m -> runs/mj_q3_rubble_sweep.csv
+PYTHONPATH=. python scripts/mj_run_q3_rubble_margins.py 100 16        # smaller margins on rubble -> runs/mj_q3_rubble_margins.csv
+PYTHONPATH=. python scripts/mj_run_q3_rubble_margins.py 100 16 low    # d_clear 0.4 / 0.25 / 0 -> runs/mj_q3_rubble_margins_low.csv
+PYTHONPATH=. python scripts/plot_rubble_margins.py                # Figure 20 -> figures/mujoco/rubble_margins.png
+PYTHONPATH=. python scripts/mj_sudden_fresh.py 30 16                # fresh-track confidence in the sudden-threat test -> runs/mj_sudden_fresh.csv
+PYTHONPATH=. python scripts/mj_run_q3_rubble_conf.py 100 16            # 0.9 / 0.95 / 0.99 on every track -> runs/mj_q3_rubble_conf.csv
+PYTHONPATH=. python scripts/mj_run_q3_rubble_fresh.py 100 16           # fresh tracks only -> runs/mj_q3_rubble_fresh.csv
+PYTHONPATH=. python scripts/render_mj_rubble.py 74       # figures/mujoco/go2_rubble_site_074.png (MUJOCO_GL=egl if headless)
 PYTHONPATH=. python scripts/render_mj.py         # -> figures/mujoco/ (five 600 s Go2 episodes in parallel)
 PYTHONPATH=. python scripts/diag_stall.py        # stack-state log of the sites that stalled before the fixes
 ```
 
-Retraining the policy (Linux or WSL2, NVIDIA GPU): clone `unitree_rl_mjlab`, `pip install -e .` in a Python 3.11 environment, pin `mujoco==3.5.0` and `warp-lang==1.12.0` (the versions pip picks by default break mjlab 1.2.0), `pip install scipy`, then `python scripts/train.py Unitree-Go2-Flat --env.scene.num-envs=4096 --agent.logger tensorboard --agent.max-iterations 3000`. The exported `policy.onnx` lands in `logs/rsl_rl/go2_velocity/<run>/`.
+Retraining the policy (Linux or WSL2, NVIDIA GPU; full commands, versions and the rough-terrain run, which needs 2048 environments on a 12 GB GPU, are in [`sim.md`](sim.md)): clone `unitree_rl_mjlab`, `pip install -e .` in a Python 3.11 environment, pin `mujoco==3.5.0` and `warp-lang==1.12.0` (the versions pip picks by default break mjlab 1.2.0), `pip install scipy`, then `python scripts/train.py Unitree-Go2-Flat --env.scene.num-envs=4096 --agent.logger tensorboard --agent.max-iterations 3000`. The exported `policy.onnx` lands in `logs/rsl_rl/go2_velocity/<run>/`.
+
+## Future work
+
+Open problems found by the experiments above, in the order planned. The first is done as an option (below); the second has not been started.
+
+1. **Fix the sudden-threat weak spot. Done as an option; effect small.** A higher confidence on fresh tracks (`StackConfig.conf_fresh`, `n_fresh`) removes the never-corrected failure (103 to 10 of 1,440 at 0.99) and 3 of the 9 violations at the stack's 1 Hz update rate, at -0.003 score on rubble ([Higher confidence on fresh tracks](#higher-confidence-on-fresh-tracks)). It is off by default. What remains is a 1.5 m appearance at 1 m/s, where the barrier is breached at the first step; fixing that needs earlier detection or a lower speed near unexplored ground, not a bigger region.
+2. **Find out why track retention did not transfer to the closed-loop stack.** Retention helps in the search simulator ([Track retention](#track-retention-fixing-the-dropped-track-loss)) but not in the closed-loop Go2 stack. Log where the robot parks and which tracks it holds in the closed-loop runs, compare with the search simulator on the same sites, and see whether the cause is the standoff behavior, the safety regions or the belief's forgetting of stale tracks.
