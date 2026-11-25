@@ -115,6 +115,8 @@ def oracle_score(site: Site, T: float, travel=None, standoff: float = STANDOFF_R
             prev = j
         return tot
 
+    if n > 9:
+        raise ValueError(f"oracle_score brute-forces all {n}! visiting orders; use at most 9 survivors")
     orders = list(permutations(range(1, n + 1)))
     best = max(orders, key=lambda o: total(o, pick))
     val = total(best, m)

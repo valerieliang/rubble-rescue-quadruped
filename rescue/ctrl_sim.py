@@ -22,7 +22,7 @@ import numpy as np
 
 from .ctrl_behavior import BehaviorConfig, assign_modes, sample_response, step_survivors
 from .drone_prior import PriorConfig, generate_detections
-from .interfaces import BASE_REWARD, Detection, Observation, RunLog, Site
+from .interfaces import BASE_REWARD, Detection, Observation, Priority, RunLog, Site
 from .sim import Go2Params, step_unicycle
 from .stack import R_RESCUE, RescueStack, StackConfig
 from .terrain import speed_at
@@ -52,11 +52,15 @@ def run_episode_ctrl(site: Site, prior_cfg: PriorConfig, stack_cfg: StackConfig,
                      T: float = 600.0, sensor_radius: float = 10.0, p_detect: float = 0.9,
                      sigma_meas: float = 0.5, params: Go2Params | None = None,
                      behavior: BehaviorConfig | None = None, dt: float = 0.1,
-                     rescue_radius: float = R_RESCUE, dwell: dict | None = None, plant=None) -> CtrlLog:
+                     rescue_radius: float = R_RESCUE, dwell: dict | None = None, plant=None,
+                     fp_rate: float = 0.0, fp_radius: float | None = None) -> CtrlLog:
     """``plant`` (default None = the unicycle) can be a ``mj_plant.Go2MujocoPlant``: the commanded
     (v, omega) is then tracked by the learned Go2 policy in MuJoCo, the pose comes back from it, and the
     episode ends (``log.fell_at``) if the robot falls. Terrain stays a speed cap in the stack. With a plant
-    and no ``params``, the stack plans and filters with the plant's turn-rate limit (``plant.w_max``)."""
+    and no ``params``, the stack plans and filters with the plant's turn-rate limit (``plant.w_max``).
+    ``fp_rate`` > 0 adds onboard false detections (clutter): a Poisson rate per second of spurious detections at a
+    uniform random point within ``fp_radius`` (default: the sensor radius) of the robot, with the usual position noise.
+    They use their own random stream, so the true detections are unchanged. A prompt to a phantom gets no answer."""
     p = params or Go2Params()
     if plant is not None and params is None:
         # plan and filter with the turn rate the plant can actually follow (the policy's +-1 rad/s range)
@@ -64,6 +68,8 @@ def run_episode_ctrl(site: Site, prior_cfg: PriorConfig, stack_cfg: StackConfig,
     beh = behavior or BehaviorConfig()
     rng = np.random.default_rng(seed)
     brng = np.random.default_rng(seed + 1_000_003)
+    frng = np.random.default_rng(seed + 2_000_003)
+    fp_radius = sensor_radius if fp_radius is None else fp_radius
     modes = assign_modes(site, beh, np.random.default_rng(site.seed + 7919))
     truth = {s.id: s for s in site.survivors}
     spos = {s.id: s.pos.astype(float).copy() for s in site.survivors}
@@ -89,7 +95,18 @@ def run_episode_ctrl(site: Site, prior_cfg: PriorConfig, stack_cfg: StackConfig,
             for s in sorted(pending)
             if np.linalg.norm(spos[s] - pos) <= sensor_radius and rng.random() < p_detect)
 
+        if fp_rate > 0:
+            for _ in range(frng.poisson(fp_rate * dt)):
+                ang, rad = frng.uniform(0, 2 * np.pi), fp_radius * np.sqrt(frng.uniform())
+                fp = pos + rad * np.array([np.cos(ang), np.sin(ang)]) + frng.normal(0, sigma_meas, 2)
+                detected = detected + (Detection(fp, Priority(int(frng.integers(3))), None),)
+
         for req in stack.perceive(t, pos, detected):
+            if req.source_id is None:                 # a phantom: prompting it gets no answer
+                if req.kind == "prompt":
+                    log.prompts += 1
+                    stack.apply_response(req.key, 2)
+                continue
             z = truth[req.source_id].state
             if req.kind == "prompt":
                 log.prompts += 1
