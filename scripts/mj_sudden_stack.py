@@ -33,7 +33,7 @@ from rescue.interfaces import Detection, Priority, ResponseState, Site, Survivor
 from rescue.sim import Go2Params
 from rescue.stack import RescueStack, StackConfig
 
-SPEEDS = (0.5, 1.0)
+SPEEDS = (0.5, 0.75, 1.0)
 D_APPEAR = (1.5, 2.0, 2.5, 3.0, 4.0, 6.0)
 LATERAL = (0.0, 0.7)
 X_MISSED, X_GOAL = 10.0, 25.0
@@ -84,7 +84,8 @@ def work(job):
     cfg = replace(StackConfig(), use_cbf=variant != "no_cbf", infer_state=False,
                   **(dict(conf_fresh=0.99, n_fresh=5) if variant == "fresh99" else {}),
                   **(dict(fast_detect=True) if variant.startswith("fast") else {}),
-                  **(dict(conf_fresh=0.99, n_fresh=5) if variant == "fast99" else {}))
+                  **(dict(conf_fresh=0.99, n_fresh=5) if variant == "fast99" else {}),
+                  **(dict(fast_gate=int(variant[-1])) if variant.startswith("fast_g") else {}))
     sensor = float(np.hypot(d_app, lat))
     log = cs.run_episode_ctrl(site, PriorConfig(n_false_pos=0.0), cfg, seed, variant, T=T_RUN, sensor_radius=sensor,
                               params=Go2Params(speed_scale=v, max_turn_rate=1.0), rescue_radius=0.0, plant=plant,
@@ -98,27 +99,34 @@ def work(job):
                 t_belief=PROBE.get("t_belief", np.nan), d_belief=PROBE.get("d_belief", np.nan))
 
 
+VARIANTS_ALL = ("full", "no_cbf", "fresh99", "fast", "fast99")
+VARIANTS_GATE = ("full", "fast", "fast_g2", "fast_g3")    # third argument "gate": the persistence gate (fast_gate 2 / 3 detections within 0.5 s)
+
+
 def main():
     n_seeds = int(sys.argv[1]) if len(sys.argv) > 1 else 30
     workers = int(sys.argv[2]) if len(sys.argv) > 2 else None
+    gate = len(sys.argv) > 3 and sys.argv[3] == "gate"
+    variants = VARIANTS_GATE if gate else VARIANTS_ALL
+    out = "runs/mj_sudden_gate.csv" if gate else "runs/mj_sudden_stack.csv"
     jobs = [(n, v, d, lat, s, var) for n in ("unicycle", "mujoco") for v in SPEEDS for d in D_APPEAR
-            for lat in LATERAL for s in range(n_seeds) for var in ("full", "no_cbf", "fresh99", "fast", "fast99")]
+            for lat in LATERAL for s in range(n_seeds) for var in variants]
     print(len(jobs), "episodes ...", flush=True)
     with Pool(workers) as pool:
         rows = pool.map(work, jobs, chunksize=4)
-    with open("runs/mj_sudden_stack.csv", "w", newline="") as f:
+    with open(out, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader()
         w.writerows(rows)
-    summarize(rows)
+    summarize(rows, variants)
 
 
-def summarize(rows):
+def summarize(rows, variants=VARIANTS_ALL):
     print("\nviolations / runs (10 Hz samples) by d_appear")
     print(f"{'plant':9s} {'speed':>5s} {'variant':>7s} | " + "  ".join(f"{d:>9.1f}" for d in D_APPEAR))
     for name in ("unicycle", "mujoco"):
         for v in SPEEDS:
-            for var in ("full", "no_cbf", "fresh99", "fast", "fast99"):
+            for var in variants:
                 cells = []
                 for d in D_APPEAR:
                     r = [x for x in rows if (x["plant"], x["speed"], x["variant"], x["d_appear"]) == (name, v, var, d)]
