@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rubble-rescue-quadruped"
 version = "0.1.0"
-description = "Prior-guided, safety-aware search and approach for a quadruped in rubble (HCR course project)"
+description = "Prior-guided, safety-aware search and approach for a quadruped in rubble"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.21", "scipy>=1.8", "matplotlib>=3.5"]

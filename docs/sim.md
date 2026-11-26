@@ -1,6 +1,6 @@
 # Simulation notes
 
-How the three simulators fit together, how the locomotion policies were trained, and how to reproduce it. Results tables are in [`README.md`](../README.md); this file is the working record. This repository: <https://github.com/valerieliang/rubble-rescue-quadruped>. The robot and training code (the "doggy in sim") is Unitree's [`unitree_rl_mjlab`](https://github.com/unitreerobotics/unitree_rl_mjlab), which we ran in WSL2 and did not modify (see [Reproducing](#reproducing-from-scratch)).
+How the three simulators fit together, how the locomotion policies were trained, and how to reproduce it. Results tables are in [`RESULTS.md`](RESULTS.md); this file is the working record. This repository: <https://github.com/valerieliang/rubble-rescue-quadruped>. The robot and training code (the "doggy in sim") is Unitree's [`unitree_rl_mjlab`](https://github.com/unitreerobotics/unitree_rl_mjlab), which we ran in WSL2 and did not modify (see [Reproducing](#reproducing-from-scratch)).
 
 ## Reproducing from scratch
 
