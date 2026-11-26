@@ -36,7 +36,7 @@ def _stack(**kw):
 
 
 def test_fast_detect_adds_provisional_track_and_drops_it_once_belief_holds_it():
-    st = _stack(fast_detect=True)
+    st = _stack(fast_detect=True, fast_gate=1)
     far = np.array([500.0, 500.0])
     st.perceive(1.0, np.zeros(2), (Detection(far, Priority.URGENT, None),))
     assert len(st.fast) == 1
@@ -47,8 +47,9 @@ def test_fast_detect_adds_provisional_track_and_drops_it_once_belief_holds_it():
     assert st.fast == []                                           # the belief now holds it
 
 
-def test_fast_detect_off_by_default_keeps_no_provisional_tracks():
-    st = _stack()
+def test_fast_detect_off_keeps_no_provisional_tracks_and_default_is_gate_3():
+    assert StackConfig().fast_detect and StackConfig().fast_gate == 3
+    st = _stack(fast_detect=False)
     st.perceive(1.0, np.zeros(2), (Detection(np.array([500.0, 500.0]), Priority.URGENT, None),))
     assert st.fast == []
 
@@ -71,7 +72,7 @@ def test_persistence_gate_needs_repeated_detections_within_the_window():
     st.perceive(1.2, np.zeros(2), (Detection(far - 0.2, Priority.URGENT, None),))
     assert len(st._fast_active(1.2)) == 1                                # third within 0.5 s: now a barrier
     assert st._fast_active(1.9) == []                                    # the detections age out of the window
-    st1 = _stack(fast_detect=True)                                       # default gate 1: first detection counts at once
+    st1 = _stack(fast_detect=True, fast_gate=1)                          # gate 1: first detection counts at once
     st1.perceive(1.0, np.zeros(2), (Detection(far, Priority.URGENT, None),))
     assert len(st1._fast_active(1.0)) == 1
 

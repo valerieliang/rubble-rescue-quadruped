@@ -83,9 +83,9 @@ def work(job):
                  Survivor(1, truth, Priority.CRITICAL, ResponseState.TRAPPED)), np.zeros(2))
     cfg = replace(StackConfig(), use_cbf=variant != "no_cbf", infer_state=False,
                   **(dict(conf_fresh=0.99, n_fresh=5) if variant == "fresh99" else {}),
-                  **(dict(fast_detect=True) if variant.startswith("fast") else {}),
-                  **(dict(conf_fresh=0.99, n_fresh=5) if variant == "fast99" else {}),
-                  **(dict(fast_gate=int(variant[-1])) if variant.startswith("fast_g") else {}))
+                  fast_detect=variant.startswith("fast"),             # explicit: the stack default is now on (gate 3)
+                  fast_gate=int(variant[-1]) if variant.startswith("fast_g") else 1,
+                  **(dict(conf_fresh=0.99, n_fresh=5) if variant == "fast99" else {}))
     sensor = float(np.hypot(d_app, lat))
     log = cs.run_episode_ctrl(site, PriorConfig(n_false_pos=0.0), cfg, seed, variant, T=T_RUN, sensor_radius=sensor,
                               params=Go2Params(speed_scale=v, max_turn_rate=1.0), rescue_radius=0.0, plant=plant,

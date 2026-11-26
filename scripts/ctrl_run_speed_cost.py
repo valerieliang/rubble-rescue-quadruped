@@ -19,7 +19,7 @@ def main():
     seeds = usable_seeds(n)
     jobs = []
     for sc in SCALES:
-        jobs += make_jobs(seeds, ["full"], label=f"speed_{sc}", fast_detect=[True], sigma_meas=[0.5], speed_scale=[sc])
+        jobs += make_jobs(seeds, ["full"], label=f"speed_{sc}", fast_detect=[True], fast_gate=[1], sigma_meas=[0.5], speed_scale=[sc])
     rows = run_jobs(jobs, workers)
     save_rows(rows, "runs/ctrl_speed_cost.csv")
     base = {x["seed"]: x["norm_class"] for x in rows if x["label"] == "speed_1.0"}

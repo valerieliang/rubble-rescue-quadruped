@@ -19,7 +19,7 @@ def main():
     seeds = usable_seeds(n)
     jobs = []
     for fd in (False, True):
-        jobs += make_jobs(seeds, ["full"], label=f"fast_{int(fd)}", fast_detect=[fd], sigma_meas=[0.5],
+        jobs += make_jobs(seeds, ["full"], label=f"fast_{int(fd)}", fast_detect=[fd], fast_gate=[1], sigma_meas=[0.5],
                           plant=["mujoco_rubble"], policy=[ROUGH])
     rows = run_jobs(jobs, workers)
     save_rows(rows, "runs/mj_fast_detect_rubble.csv")

@@ -62,8 +62,8 @@ class StackConfig:
     prompt_gap: float = 3.0
     max_prompts: int = 3
     motion_window: float = 5.0
-    fast_detect: bool = False        # 10 Hz first-detection path: an onboard detection no belief track explains goes to the filter at once
-    fast_gate: int = 1               # a provisional track reaches the filter only after this many detections within fast_window
+    fast_detect: bool = True         # 10 Hz first-detection path: an onboard detection no belief track explains goes to the filter at once (on since the gate, below, removed its clutter cost)
+    fast_gate: int = 3               # a provisional track reaches the filter only after this many detections within fast_window
     fast_window: float = 0.5         # s (a real survivor in range is detected on ~90% of 10 Hz steps; a phantom rarely repeats)
     fast_ttl: float = 5.0            # s a provisional track survives without a detection
     apply_filter: bool = True        # False (with use_cbf): the MPC sees the keep-out discs but the CBF-QP does not run (soft-constraint baseline)
