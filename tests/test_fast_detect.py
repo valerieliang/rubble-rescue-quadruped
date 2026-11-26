@@ -55,7 +55,7 @@ def test_fast_detect_off_keeps_no_provisional_tracks_and_default_is_gate_3():
 
 
 def test_disturbed_plant_zero_noise_is_the_unicycle_and_noise_raises_the_gap():
-    a, b = DisturbedUnicycle(0.0), DisturbedUnicycle(0.0)
+    a = DisturbedUnicycle(0.0)
     for _ in range(20):
         pa = a.step(0.8, 0.3)[0]
     assert np.all(np.isfinite(pa))

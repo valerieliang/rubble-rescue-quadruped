@@ -19,7 +19,7 @@ from dataclasses import dataclass, replace
 import numpy as np
 
 from .drone_prior import PriorConfig
-from .interfaces import Priority, Region, ResponseState, Site, Survivor
+from .interfaces import Priority, ResponseState, Site, Survivor
 from .legibility import CostObserver, HeadingObserver, LearnedObserver, identification_time
 from .sim import Go2Params, step_unicycle
 from .stack import R_RESCUE, RescueStack, StackConfig

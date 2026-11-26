@@ -3,7 +3,7 @@ import numpy as np
 
 from rescue.ctrl_behavior import StateBelief, make_site
 from rescue.drone_prior import PriorConfig, generate_detections
-from rescue.interfaces import (BASE_REWARD, PRIORITY_DECAY, PRIORITY_WEIGHT, REWARDS, TRIAGE_REWARD, Priority,
+from rescue.interfaces import (BASE_REWARD, PRIORITY_DECAY, PRIORITY_WEIGHT, TRIAGE_REWARD, Priority,
                                ResponseState as Z, RewardModel)
 from rescue.legibility import LearnedObserver
 from rescue.metrics import oracle_score

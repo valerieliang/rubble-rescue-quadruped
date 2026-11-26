@@ -23,7 +23,7 @@ robot is legible for survivors who can watch it, not for those who cannot.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Sequence
 
 import numpy as np

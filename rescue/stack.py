@@ -13,7 +13,7 @@ answer a prompt for the right survivor.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import partial
 
 import numpy as np

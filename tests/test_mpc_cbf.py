@@ -4,7 +4,7 @@ import pytest
 
 from rescue.cbf import SafetyFilter, rect_sd, rect_sd_grad
 from rescue.clearance import ClearanceRegion
-from rescue.interfaces import Region, ResponseState
+from rescue.interfaces import Region
 from rescue.mpc import ApproachController, MPCPlanner, legibility_weight, standoff_pose
 from rescue.observer import goal_posterior
 
