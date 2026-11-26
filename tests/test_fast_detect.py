@@ -77,6 +77,25 @@ def test_persistence_gate_needs_repeated_detections_within_the_window():
     assert len(st1._fast_active(1.0)) == 1
 
 
+def test_mpc_fast_gives_the_mpc_a_disc_only_for_active_provisional_tracks():
+    from rescue.interfaces import Observation
+    far = np.array([500.0, 500.0])
+    seen = []
+
+    def run(**kw):
+        st = _stack(fast_detect=True, fast_gate=1, apply_filter=False, **kw)
+        st.plan(Observation(0.0, st.site.start.copy(), 10.0, (), ()))
+        st.perceive(1.0, np.zeros(2), (Detection(far, Priority.URGENT, None),))
+        orig = st.mpc.solve
+        st.mpc.solve = lambda *a, **k: (seen.append(a[5]), orig(*a, **k))[1]
+        st.control(1.0, st.site.start.astype(float), 0.0, 1.0)
+        return seen[-1]
+
+    base, with_fast = run(), run(mpc_fast=True)
+    assert len(with_fast) == len(base) + 1 and np.allclose(with_fast[-1][0], far)
+    assert with_fast[-1][1] > 0
+
+
 def test_apply_filter_off_returns_the_mpc_command_unchanged():
     st = _stack(apply_filter=False)
     st.plan(__import__("rescue.interfaces", fromlist=["Observation"]).Observation(0.0, st.site.start.copy(), 10.0, (), ()))

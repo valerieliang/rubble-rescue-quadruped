@@ -67,6 +67,7 @@ class StackConfig:
     fast_window: float = 0.5         # s (a real survivor in range is detected on ~90% of 10 Hz steps; a phantom rarely repeats)
     fast_ttl: float = 5.0            # s a provisional track survives without a detection
     apply_filter: bool = True        # False (with use_cbf): the MPC sees the keep-out discs but the CBF-QP does not run (soft-constraint baseline)
+    mpc_fast: bool = False           # also give the MPC a keep-out disc for each active provisional (fast_detect) track; with apply_filter=False this is the fair disc-only baseline (same information as the filter)
     avg_meas: bool = False         # fuse all 10 Hz detections of the last second (mean, sigma_meas/sqrt(n)), not one
     hint_acc: float = 0.7            # accuracy the robot assumes for the drone's state cue
     reliability: float = 0.8         # q the robot assumes when interpreting prompt responses
@@ -419,6 +420,8 @@ class RescueStack:
         if self.cfg.use_cbf:
             discs = [(tr.mean, self.boundary(tr)) for tr in tracks if tr is not self.target]
             discs += [(q, self.cbf.region_radius(self.cfg.sigma_floor)) for q in self.keepout]
+            if self.cfg.mpc_fast:
+                discs += [(f[0], self.cbf.region_radius(f[1], self.cfg.conf_fresh or None)) for f in self._fast_active(t)]
         leg = None
         if (self.cfg.legibility > 0 or self.cfg.legibility_heading > 0) and self.target is not None:
             near = [tr for tr in tracks if np.linalg.norm(tr.mean - pos) < 25.0]
