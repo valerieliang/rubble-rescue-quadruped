@@ -1,6 +1,6 @@
 """Q3 on rubble with smaller safety margins: when do clearance violations appear?
 
-Usage (repo root):  PYTHONPATH=. python scripts/mj_run_q3_rubble_margins.py [n_sites] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/mujoco/mj_run_q3_rubble_margins.py [n_sites] [workers]
 
 Rough policy on the MuJoCo rubble heightfield, sigma_meas 0.5 m, full stack only (the no-filter run is in
 runs/mj_q3_rubble.csv). The survivor barrier sits at  c_p * sigma + d_clear + eps_track + cp_offset  from the belief

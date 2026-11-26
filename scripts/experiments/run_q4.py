@@ -13,7 +13,7 @@ Reports, per observation noise sigma_obs and observation length:
   * robustness: how often lateral (out-of-model) motion is flagged by the surprise statistic vs.
     in-model motion.
 
-Usage: PYTHONPATH=. python scripts/run_q4.py [n_tracks]
+Usage: PYTHONPATH=. python scripts/experiments/run_q4.py [n_tracks]
 """
 import csv
 import os
@@ -22,7 +22,6 @@ import sys
 import numpy as np
 
 from rescue.behavior import Behavior, BehaviorModel, ModeBelief, synthetic_track
-from rescue.interfaces import ResponseState
 
 SIGMAS = [0.1, 0.25, 0.5, 1.0, 2.0]
 N_OBS = 10                 # samples per track, 1 s apart

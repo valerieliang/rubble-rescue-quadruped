@@ -1,6 +1,6 @@
 """Head-on stress test of the CBF safety filter on the unicycle and on the MuJoCo Go2.
 
-Usage (repo root):  PYTHONPATH=. python scripts/mj_cbf_stress.py
+Usage (repo root):  PYTHONPATH=. python scripts/mujoco/mj_cbf_stress.py
 
 A nominal controller drives the robot straight at a survivor whose position is known exactly, at constant
 speed, and keeps steering toward it; the CBF filter (safety.CBFFilter, the one in the closed-loop stack) is

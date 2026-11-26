@@ -1,6 +1,6 @@
 """Head-on test: CBF filter vs a disc-only MPC, on the unicycle and on the MuJoCo Go2 (flat).
 
-Usage (repo root):  PYTHONPATH=. python scripts/mj_headon_mpc.py [n_seeds] [workers]      -> runs/mj_headon_mpc.csv
+Usage (repo root):  PYTHONPATH=. python scripts/mujoco/mj_headon_mpc.py [n_seeds] [workers]      -> runs/mj_headon_mpc.csv
 
 Same set-up as mj_cbf_stress.py (survivor known exactly at the origin, robot starts 6 m away facing it, plus a
 heading offset; both plants limited to the policy's yaw rate). Two controllers:

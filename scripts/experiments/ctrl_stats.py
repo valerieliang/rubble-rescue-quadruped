@@ -1,6 +1,6 @@
 """Paired differences with 95% confidence intervals for the closed-loop Q3 and Q4 runs. Prints markdown tables.
 
-Usage: PYTHONPATH=. python scripts/ctrl_stats.py
+Usage: PYTHONPATH=. python scripts/experiments/ctrl_stats.py
 
 Every comparison is paired by site seed (same site, same drone detections), so the interval is on the per-site
 difference. A difference is called detectable when its interval excludes zero; intervals are not corrected for

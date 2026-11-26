@@ -1,6 +1,6 @@
 """Where does the closest approach come from?  Head-on decomposition of  closest approach ~ d_clear + 0.5 m.
 
-Usage (repo root):  PYTHONPATH=. python scripts/margin_decomp.py [n_runs] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/diagnostics/margin_decomp.py [n_runs] [workers]
 
 The filter's barrier is zero at distance  R = c_p*sigma + d_clear + eps_track + cp_offset  from the survivor estimate,
 measured from a control point that sits cp_offset *ahead* of the robot centre. So when the robot drives straight at the

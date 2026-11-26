@@ -1,6 +1,6 @@
 """Diagnose episodes where the robot stops making progress: old router vs the region-avoiding router.
 
-Usage (repo root):  PYTHONPATH=. python scripts/diag_stall.py
+Usage (repo root):  PYTHONPATH=. python scripts/diagnostics/diag_stall.py
 
 Runs a few unicycle episodes (seconds each) that lost rescues when the router started avoiding safety
 regions, with the old stack, the new router only, and the new router plus forget_stale_tracks, recording the stack's state
@@ -20,7 +20,7 @@ from rescue.drone_prior import PriorConfig
 from rescue.interfaces import REWARDS
 from rescue.stack import VARIANTS
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "figures"))
 from render_mj import diag_stack_class  # noqa: E402
 
 # (name, seed, StackConfig overrides, sigma_meas): cases whose rescue rate fell with the new router

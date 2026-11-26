@@ -1,6 +1,6 @@
 """Cost of a lower speed cap on the closed-loop benchmark (the price of the only fix left for a 1.5 m first sighting).
 
-Usage (repo root):  PYTHONPATH=. python scripts/ctrl_run_speed_cost.py [n_sites] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/experiments/ctrl_run_speed_cost.py [n_sites] [workers]
 Unicycle, sigma_meas 0.5 m, full stack with fast_detect on, speed cap 1.0 / 0.75 / 0.5 of the terrain speed.
 Writes runs/ctrl_speed_cost.csv.
 """

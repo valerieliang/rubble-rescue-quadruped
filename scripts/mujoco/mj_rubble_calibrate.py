@@ -1,6 +1,6 @@
 """Tracking and falls of the MuJoCo Go2 on physical rubble, and the tracking-error pad measured there.
 
-Usage (repo root):  PYTHONPATH=. python scripts/mj_rubble_calibrate.py [--policy path.onnx] [--n 200] [--label name]
+Usage (repo root):  PYTHONPATH=. python scripts/mujoco/mj_rubble_calibrate.py [--policy path.onnx] [--n 200] [--label name]
 
 Builds a 40 m x 40 m patch of each ground type (flat plane, rubble heightfield, hazard heightfield from
 ``mj_terrain``), starts the robot at random places inside it with random headings, and measures the same thing

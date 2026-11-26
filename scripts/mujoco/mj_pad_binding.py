@@ -1,6 +1,6 @@
 """Does the tracking-error pad bind on the real (simulated) Go2?  Head-on test, the MuJoCo counterpart of pad_binding.py.
 
-Usage (repo root, a Python with mujoco and onnxruntime):  PYTHONPATH=. python scripts/mj_pad_binding.py [n_runs] [workers]
+Usage (repo root, a Python with mujoco and onnxruntime):  PYTHONPATH=. python scripts/mujoco/mj_pad_binding.py [n_runs] [workers]
 
 pad_binding.py showed the pad binding on a unicycle with *injected* tracking error. Here the error is the Go2 policy's own:
 a nominal controller drives the learned Go2 straight at a survivor and the CBF filter is the only thing that stops it, on

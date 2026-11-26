@@ -1,6 +1,6 @@
 """Q2 regime map: when does priority-weighted ordering beat nearest-first?
 
-Usage (repo root):  RESCUE_SIM=go2 PYTHONPATH=. python scripts/run_regime.py [n_sites] [workers]
+Usage (repo root):  RESCUE_SIM=go2 PYTHONPATH=. python scripts/experiments/run_regime.py [n_sites] [workers]
 
 Priority vs nearest-first (same prior, same sites) over horizon T and survivors per site, at the default 80%
 class accuracy and at 100%. Ordering can only matter when the robot cannot reach everyone, so the gain should

@@ -1,6 +1,6 @@
 """Draw a seeded site and, optionally, one run's trajectory. Saves PNGs to figures/path_planning/.
 
-Usage: python scripts/render_site.py SEED [SEED ...] [--method {coverage,nearest,priority}]
+Usage: python scripts/figures/render_site.py SEED [SEED ...] [--method {coverage,nearest,priority}]
                                      [--sim {toy,go2}] [--out figures/path_planning]
 
 Without --method it draws the site and drone detections only. Each seed is used for both the

@@ -1,6 +1,6 @@
 """Why is priority ordering null? Sweep the shape of the class reward and see when ordering starts to matter.
 
-Usage (repo root):  RESCUE_SIM=go2 PYTHONPATH=. python scripts/run_reward_shape.py [n_sites] [workers] [first_seed]
+Usage (repo root):  RESCUE_SIM=go2 PYTHONPATH=. python scripts/experiments/run_reward_shape.py [n_sites] [workers] [first_seed]
 
 The reward for reaching survivor i at time t is w_class * exp(-decay_class * t). With the defaults (weights
 1/2/4, decays 0.002/0.005/0.01 per s) a critical survivor is worth less than a stable one after 173 s, so the
@@ -12,7 +12,7 @@ is scored against its own oracle. Writes runs/reward_shape.csv.
 import sys
 
 from rescue.drone_prior import PriorConfig
-from rescue.experiments import paired_diff, run_grid, save_csv
+from rescue.experiments import paired_diff, run_grid
 
 D0 = (0.002, 0.005, 0.01)
 SETTINGS = {   # name: (weights stable/urgent/critical, decays)

@@ -1,6 +1,6 @@
 """Cost of a high safety-region confidence on rubble (experiment 3, cost side).
 
-Usage (repo root):  PYTHONPATH=. python scripts/mj_run_q3_rubble_conf.py [n_sites] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/mujoco/mj_run_q3_rubble_conf.py [n_sites] [workers]
 
 Rough policy on the MuJoCo rubble heightfield, sigma_meas 0.5 m, pad 0.25 m, full stack, confidence 0.9 / 0.95 / 0.99
 applied to every track (an upper bound on the cost of raising it for fresh tracks only). The 0.7 row is in

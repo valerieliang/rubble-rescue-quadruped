@@ -1,6 +1,6 @@
 """Q3: safety under uncertainty. Writes runs/q3_*.csv.
 
-Usage: PYTHONPATH=. python scripts/ctrl_run_q3.py [n_sites] [workers]
+Usage: PYTHONPATH=. python scripts/experiments/ctrl_run_q3.py [n_sites] [workers]
 
 Compares the full system (MPC + CBF-QP) with baseline 3 (same stack, no safety filter) as the robot's
 onboard localization of survivors gets worse (sigma_meas), as the confidence level of the clearance

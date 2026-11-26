@@ -1,6 +1,6 @@
 """What if the class weights are made bigger? Priority ordering and retention as the critical weight grows.
 
-Usage (repo root):  RESCUE_SIM=go2 PYTHONPATH=. python scripts/run_reward_weights.py [n_sites] [workers]
+Usage (repo root):  RESCUE_SIM=go2 PYTHONPATH=. python scripts/experiments/run_reward_weights.py [n_sites] [workers]
 
 Class weights (stable/urgent/critical) 1/2/4 (default), 1/4/16, 1/8/64, 1/16/256, with the default decay rates,
 in the default scene (3-8 survivors, T = 600 s) and in a capacity-limited one (8 survivors, T = 300 s), at 80%,

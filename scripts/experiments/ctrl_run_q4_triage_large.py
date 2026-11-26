@@ -1,6 +1,6 @@
 """Q4 triage replication on fresh sites: is the full system's gain over no inference real or null?
 
-Usage: PYTHONPATH=. python scripts/ctrl_run_q4_triage_large.py [n_sites] [workers] [start_seed]
+Usage: PYTHONPATH=. python scripts/experiments/ctrl_run_q4_triage_large.py [n_sites] [workers] [start_seed]
 Same regime as runs/q4_triage.csv (reward triage, 8 survivors, T = 300 s, no drone state cue) on
 n_sites usable seeds starting at start_seed (default 1000, disjoint from the original 200 sites).
 Writes runs/q4_triage_large.csv.

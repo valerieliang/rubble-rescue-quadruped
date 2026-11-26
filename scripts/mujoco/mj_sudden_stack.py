@@ -1,6 +1,6 @@
 """Sudden close-range threat through the real stack (ctrl_sim + the real belief), not the stand-alone filter.
 
-Usage (repo root):  PYTHONPATH=. python scripts/mj_sudden_stack.py [n_seeds] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/mujoco/mj_sudden_stack.py [n_seeds] [workers]
 
 mj_sudden_threat.py hands the CBF filter the new estimate at t0 = 3.0 s, which is a plan-tick boundary, and then
 re-detects every 10th step. The stack differs in three ways that could make that test optimistic:
@@ -113,7 +113,6 @@ def main():
     n_seeds = int(sys.argv[1]) if len(sys.argv) > 1 else 30
     workers = int(sys.argv[2]) if len(sys.argv) > 2 else None
     mode = sys.argv[3] if len(sys.argv) > 3 else ""
-    gate = mode == "gate"
     variants = {"gate": VARIANTS_GATE, "disc": VARIANTS_DISC}.get(mode, VARIANTS_ALL)
     out = {"gate": "runs/mj_sudden_gate.csv", "disc": "runs/mj_sudden_disc.csv"}.get(mode, "runs/mj_sudden_stack.csv")
     jobs = [(n, v, d, lat, s, var) for n in ("unicycle", "mujoco") for v in SPEEDS for d in D_APPEAR

@@ -1,9 +1,8 @@
 """Run the three methods over a few seeded sites and print mean metrics.
 
-Usage: python scripts/smoke_test.py [n_sites] [--sim {toy,go2}]
+Usage: python scripts/experiments/smoke_test.py [n_sites] [--sim {toy,go2}]
 """
 import argparse
-from functools import partial
 
 import numpy as np
 

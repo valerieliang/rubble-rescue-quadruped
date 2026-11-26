@@ -1,6 +1,6 @@
 """Fresh-track confidence in the stack, on rubble (experiment 3, cost side).
 
-Usage (repo root):  PYTHONPATH=. python scripts/mj_run_q3_rubble_fresh.py [n_sites] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/mujoco/mj_run_q3_rubble_fresh.py [n_sites] [workers]
 
 StackConfig.conf_fresh / n_fresh: a robot-detected track with fewer than n_fresh detections fused uses confidence
 conf_fresh instead of 0.7 (the belief updates at 1 Hz, so n_fresh = 5 is about 5 s). Rough policy on the MuJoCo rubble

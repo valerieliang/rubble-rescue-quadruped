@@ -1,7 +1,7 @@
 """The MuJoCo Go2 walking a site with physical rubble -> figures/mujoco/go2_rubble_site_<seed>.png
 
 Usage (repo root, MUJOCO_GL=egl on a headless machine):
-    PYTHONPATH=. python scripts/render_mj_rubble.py [seed]        (default seed 74)
+    PYTHONPATH=. python scripts/figures/render_mj_rubble.py [seed]        (default seed 74)
 
 Runs the full stack on the rubble-heightfield Go2 with the rough-terrain policy (sim/go2/policy_rough.onnx)
 and draws three panels: the site from above with the 1 Hz trail (the heightfield is the real ground; the

@@ -1,6 +1,6 @@
 """fast_detect on physical rubble: cost and safety on the MuJoCo Go2 (rough policy), off vs on.
 
-Usage (repo root):  PYTHONPATH=. python scripts/mj_run_fast_detect_rubble.py [n_sites] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/mujoco/mj_run_fast_detect_rubble.py [n_sites] [workers]
 Full stack, sigma_meas 0.5 m, pad 0.25 m, confidence 0.7. Writes runs/mj_fast_detect_rubble.csv.
 """
 import os

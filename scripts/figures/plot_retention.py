@@ -1,6 +1,6 @@
 """Figure for the track-retention ablation: score, time to critical and rescue rate vs position noise.
 
-Usage: PYTHONPATH=. python scripts/plot_retention.py [out.png]    (needs runs/retention.csv from run_retention.py)
+Usage: PYTHONPATH=. python scripts/figures/plot_retention.py [out.png]    (needs runs/retention.csv from run_retention.py)
 """
 import sys
 

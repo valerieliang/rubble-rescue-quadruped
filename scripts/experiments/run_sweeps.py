@@ -1,6 +1,6 @@
 """Q1 / Q2 sweeps. Writes CSVs to runs/.
 
-Usage: RESCUE_SIM=go2 PYTHONPATH=. python scripts/run_sweeps.py [n_sites]
+Usage: RESCUE_SIM=go2 PYTHONPATH=. python scripts/experiments/run_sweeps.py [n_sites]
 """
 import os
 import sys

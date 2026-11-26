@@ -1,6 +1,6 @@
 """Check the MuJoCo Go2 plant, then measure the tracking-error pad against it.
 
-Usage (repo root):  PYTHONPATH=. python scripts/mj_calibrate.py [--quick] [--n 400] [--noise]
+Usage (repo root):  PYTHONPATH=. python scripts/mujoco/mj_calibrate.py [--quick] [--n 400] [--noise]
 
 1. stand:    zero command for 5 s; the robot must stay up (this also validates the joint order and gains).
 2. walk:     constant forward command; achieved speed, sideways and heading drift.

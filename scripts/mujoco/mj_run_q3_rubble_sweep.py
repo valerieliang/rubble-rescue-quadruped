@@ -1,6 +1,6 @@
 """Q3 on rubble at other noise levels and a bigger pad (rough policy, MuJoCo rubble heightfield only).
 
-Usage (repo root):  PYTHONPATH=. python scripts/mj_run_q3_rubble_sweep.py [n_sites] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/mujoco/mj_run_q3_rubble_sweep.py [n_sites] [workers]
 
 Settings (all confidence 0.7):
   sigma_meas 1.0 m, pad 0.25 m   full + no filter

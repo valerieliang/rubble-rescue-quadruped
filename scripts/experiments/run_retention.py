@@ -1,6 +1,6 @@
 """Track-retention ablation: do the three remedies for lost survivors help, and where?
 
-Usage (repo root):  RESCUE_SIM=go2 PYTHONPATH=. python scripts/run_retention.py [n_sites] [workers]
+Usage (repo root):  RESCUE_SIM=go2 PYTHONPATH=. python scripts/experiments/run_retention.py [n_sites] [workers]
 
 Runs the priority policy and each retention variant (search.PriorSearch ``retention``) on the same sites and
 drone detections across position noise sigma, writes runs/retention.csv, and prints paired differences

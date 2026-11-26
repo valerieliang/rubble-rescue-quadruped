@@ -1,6 +1,6 @@
 """Sudden close-range threat: a survivor estimate appears ahead of a robot already walking at speed.
 
-Usage (repo root):  PYTHONPATH=. python scripts/mj_sudden_threat.py [n_seeds]
+Usage (repo root):  PYTHONPATH=. python scripts/mujoco/mj_sudden_threat.py [n_seeds]
 
 The head-on test (mj_cbf_stress.py) starts the robot 6 m from a survivor the filter has known from the start,
 so the barrier is never violated at the first step. Here the robot walks toward a far goal at constant speed
@@ -13,7 +13,7 @@ Two versions: "single" keeps the first noisy estimate for the whole run (worst c
 "fused" re-detects at 10 Hz (90% detection probability) and Kalman-fuses each detection into the estimate (the
 region keeps the stack's 0.5 m sigma floor). The stack's belief does NOT fuse at 10 Hz (that is the optional avg_meas),
 and it also delays a first sighting until the next 1 Hz plan tick; this stand-alone filter test has neither delay,
-so it is a best case. The stack itself is tested in scripts/mj_sudden_stack.py.
+so it is a best case. The stack itself is tested in scripts/mujoco/mj_sudden_stack.py.
 
 Reported per (plant, speed, filter, d_appear): runs closer than 1 m to the true survivor (violations), the
 closest approach, and the filter's infeasible steps. Below some d_appear no filter can stop the robot in time

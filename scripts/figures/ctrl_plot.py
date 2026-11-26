@@ -1,6 +1,6 @@
 """Figures and summary tables for Q3-Q5 from runs/*.csv. Writes runs/figures/ and prints markdown tables.
 
-Usage: PYTHONPATH=. python scripts/ctrl_plot.py
+Usage: PYTHONPATH=. python scripts/figures/ctrl_plot.py
 """
 import os
 

@@ -1,6 +1,6 @@
 """Checks on the 'keep' remedy: fresh sites, region size, and false-positive cost.
 
-Usage (repo root):  RESCUE_SIM=go2 PYTHONPATH=. python scripts/run_retention_checks.py [n_sites] [workers]
+Usage (repo root):  RESCUE_SIM=go2 PYTHONPATH=. python scripts/experiments/run_retention_checks.py [n_sites] [workers]
 
 1. Fresh sites (seeds 1000+, disjoint from the 0-159 of run_retention.py): priority vs keep across sigma.
 2. Region size: keep with k = 1, 2 (default), 3 sigma.

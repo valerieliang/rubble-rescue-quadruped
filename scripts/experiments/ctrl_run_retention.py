@@ -1,6 +1,6 @@
 """Does the 'keep' remedy carry over to the closed-loop stack (10 Hz MPC + CBF, 10 m sensor)?
 
-Usage (repo root):  PYTHONPATH=. python scripts/ctrl_run_retention.py [n_sites] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/experiments/ctrl_run_retention.py [n_sites] [workers]
 
 Full stack with and without ``StackConfig(retention="keep")`` across drone position noise, same sites and
 detections, filter on. Writes runs/ctrl_retention.csv and prints paired differences (keep minus off) and

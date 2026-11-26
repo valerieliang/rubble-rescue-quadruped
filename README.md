@@ -44,9 +44,9 @@ Q3-Q5 standalone components (unit-tested and evaluated on their own: a local uni
 - Clearance regions: confidence-ellipse keep-out region per belief track, with barrier `h(x)` and gradient (`rescue/clearance.py`, `PriorSearch.clearance_regions()`)
 - Approach planner: sampling-based MPC (MPPI) at 10 Hz on the unicycle model with a standoff pose as goal, terrain speed caps, soft barrier costs and a one-detour router around hazards and other survivors' regions (`rescue/mpc.py`)
 - Safety filter: CBF-QP over hazard rectangles and clearance discs, closed-form because the constraints are linear in forward speed only (`rescue/cbf.py`)
-- Legibility: observer-model term in the MPC cost, weighted by the target's inferred mobility (`rescue/mpc.py`, `rescue/observer.py`); Q5 rollouts in `scripts/run_q5.py`
-- Behaviour inference: Bayes filter over still / approaching / retreating and the induced response-state belief, with a surprise statistic for out-of-model motion (`rescue/behavior.py`); offline evaluation and baseline 4 in `scripts/run_q4.py`, on a stand-in track generator
-- Safety-violation metric: trajectory steps inside a hazard region or within 1 m of a survivor (`metrics.safety_violations`, in the run CSVs); Q3 baseline 3 (no filter) in `scripts/run_q3.py`
+- Legibility: observer-model term in the MPC cost, weighted by the target's inferred mobility (`rescue/mpc.py`, `rescue/observer.py`); Q5 rollouts in `scripts/experiments/run_q5.py`
+- Behaviour inference: Bayes filter over still / approaching / retreating and the induced response-state belief, with a surprise statistic for out-of-model motion (`rescue/behavior.py`); offline evaluation and baseline 4 in `scripts/experiments/run_q4.py`, on a stand-in track generator
+- Safety-violation metric: trajectory steps inside a hazard region or within 1 m of a survivor (`metrics.safety_violations`, in the run CSVs); Q3 baseline 3 (no filter) in `scripts/experiments/run_q3.py`
 
 Closed-loop Q3-Q5 (control-rate simulator, `ctrl_sim.py`; the Q1-Q2 `sim.py` is unchanged):
 
@@ -54,17 +54,17 @@ Closed-loop Q3-Q5 (control-rate simulator, `ctrl_sim.py`; the Q1-Q2 `sim.py` is 
 - `stack.py`: the three layers assembled, with variants for baselines 3 (no filter), 4 (no state inference) and 5 (communication oracle)
 - `ctrl_mpc.py`, `safety.py`: receding-horizon MPC with a terrain path planner, and a CBF-QP with ellipse and hazard barriers padded by a measured tracking error
 - `ctrl_behavior.py`: survivor simulation and online state inference; `legibility.py`, `approach.py`: legibility term, simulated observers and the Q5 approach scenarios
-- `ctrl_experiments.py` and `scripts/ctrl_run_q3.py`, `ctrl_run_q4.py`, `ctrl_run_q5.py`, `ctrl_run_consistency.py`, `ctrl_plot.py`, `ctrl_stats.py` (paired differences with confidence intervals)
+- `ctrl_experiments.py` and `scripts/experiments/ctrl_run_q3.py`, `ctrl_run_q4.py`, `ctrl_run_q5.py`, `ctrl_run_consistency.py`, `ctrl_plot.py`, `ctrl_stats.py` (paired differences with confidence intervals)
 - Q4 reward models (`interfaces.RewardModel`): `base` (state rescales the reward) and `triage` (state-dependent handling time, faster decay for unresponsive survivors, self-evacuation of mobile ones), used consistently by the search layer, the simulator and the oracle; an optional drone state cue (`PriorConfig.p_state_cue`, off by default) and the `oracle_global` upper-bound variant
 - Q5: a heading-legibility term in the planner (`StackConfig.legibility_heading`) and a learned third observer (`legibility.LearnedObserver`)
 - Q3: safety-region confidence sweep; optional 10 Hz measurement fusion (`StackConfig.avg_meas`, off: it did not help)
 
-Full Go2 model in MuJoCo with a learned locomotion policy (initial results, [below](#mujoco-go2-with-a-learned-locomotion-policy-initial-results); how the policies were trained and how to reproduce the simulation is in [`sim.md`](sim.md)):
+Full Go2 model in MuJoCo with a learned locomotion policy (initial results, [below](#mujoco-go2-with-a-learned-locomotion-policy-initial-results); how the policies were trained and how to reproduce the simulation is in [`docs/sim.md`](docs/sim.md)):
 
 - `mj_plant.py`: the Go2 robot model and learned velocity policy that `unitree_rl_mjlab` trains, rebuilt in plain MuJoCo, as an optional plant behind `ctrl_sim.py` (`run_episode_ctrl(..., plant=Go2MujocoPlant())`, or `plant="mujoco"` / `"mujoco_rubble"` in an experiment job); the unicycle stays the default
 - `sim/go2/`: the flat-trained policy (`policy.onnx`) and the rough-terrain one (`policy_rough.onnx`), their training configs and the robot model
 - `mj_terrain.py`: physical rubble, a heightfield built from a site's rubble and hazard regions (`Go2MujocoPlant(rubble=True)`), with the rough-terrain policy; Q3 on 100 rubble sites ([below](#physical-rubble))
-- `scripts/mj_calibrate.py` (tracking and the tracking-error pad), `mj_run_q3.py`, `mj_run_conf.py`, `mj_cbf_stress.py`, `mj_rubble_calibrate.py`, `mj_run_q3_rubble.py`, `mj_run_q3_rubble_sweep.py`, `mj_run_q3_rubble_margins.py` (Q3 checks on both plants, and on a rubble heightfield at other noise levels, pads and smaller margins), `render_mj.py` (all figures in `figures/mujoco/`), `diag_stall.py` (stack-state log of episodes that stop making progress)
+- `scripts/mujoco/mj_calibrate.py` (tracking and the tracking-error pad), `mj_run_q3.py`, `mj_run_conf.py`, `mj_cbf_stress.py`, `mj_rubble_calibrate.py`, `mj_run_q3_rubble.py`, `mj_run_q3_rubble_sweep.py`, `mj_run_q3_rubble_margins.py` (Q3 checks on both plants, and on a rubble heightfield at other noise levels, pads and smaller margins), `render_mj.py` (all figures in `figures/mujoco/`), `diag_stall.py` (stack-state log of episodes that stop making progress)
 - Track retention (`PriorSearch(retention=...)`, off by default) and its ablation, a Q2 regime map, a sudden-threat test and a 100-site Go2 Q3 check (see [Track retention](#track-retention-fixing-the-dropped-track-loss), the regime check in Q2 and [Sudden close-range threat](#sudden-close-range-threat))
 - Two stack fixes found on the Go2, on by default: the route goes around survivors' safety regions (`StackConfig.route_around_regions`), and missed detections lower a confirmed track's existence (`StackConfig.forget_stale_tracks`); see [Planner fixes](#planner-fixes-found-on-the-go2). The Q3-Q5 closed-loop tables predate them (Q1-Q2 do not use this stack)
 
@@ -144,9 +144,9 @@ Both methods use the same prior; they differ only in whether the triage class se
 
 **Answer.** Only partly, and only when the classes are reliable. Priority weighting does nothing at 40-80% class accuracy. Only the 90% and 100% points exclude zero, and those intervals are not corrected for the five comparisons. Even at 100% the gain is about 3 points of normalized score, so the effect is small. Most of the benefit of the pipeline comes from the prior (Q1), not from priority ordering.
 
-**Regime check: is ordering only useful when the robot is time-limited?** One explanation for the null is that T = 600 s rarely binds, so ordering has little to trade off. We tested it (`scripts/run_regime.py`, 160 sites per cell): priority vs. nearest-first over T = 100, 150, 300, 600 s and 3, 5, 8 survivors per site, at the default 80% class accuracy and at 100%. At 80% every score difference is within +/-0.025 of zero and no cell excludes it (for example 8 survivors, T = 100 s: -0.007 +/- 0.027). At 100% the point estimates are small (-0.011 to +0.023); two of the twelve cells exclude zero (5 survivors at T = 300 s, +0.022 +/- 0.019, and at T = 600 s, +0.023 +/- 0.018), uncorrected for the twelve comparisons and not in the short-T cells where ordering should matter most. Nearest-first itself falls from 0.70 to 0.47-0.58 as T shrinks, so the robot is capacity-limited in the short-T cells, and ordering still does not help. **So "T rarely binds" is not the reason.** The reason is in the reward itself (next paragraph). Time to critical at 100% accuracy is a few seconds faster with priority (for example -6.4 +/- 8.3 s at 8 survivors, T = 300 s).
+**Regime check: is ordering only useful when the robot is time-limited?** One explanation for the null is that T = 600 s rarely binds, so ordering has little to trade off. We tested it (`scripts/experiments/run_regime.py`, 160 sites per cell): priority vs. nearest-first over T = 100, 150, 300, 600 s and 3, 5, 8 survivors per site, at the default 80% class accuracy and at 100%. At 80% every score difference is within +/-0.025 of zero and no cell excludes it (for example 8 survivors, T = 100 s: -0.007 +/- 0.027). At 100% the point estimates are small (-0.011 to +0.023); two of the twelve cells exclude zero (5 survivors at T = 300 s, +0.022 +/- 0.019, and at T = 600 s, +0.023 +/- 0.018), uncorrected for the twelve comparisons and not in the short-T cells where ordering should matter most. Nearest-first itself falls from 0.70 to 0.47-0.58 as T shrinks, so the robot is capacity-limited in the short-T cells, and ordering still does not help. **So "T rarely binds" is not the reason.** The reason is in the reward itself (next paragraph). Time to critical at 100% accuracy is a few seconds faster with priority (for example -6.4 +/- 8.3 s at 8 survivors, T = 300 s).
 
-**Why ordering is null: the decay cancels the class weights.** The reward for reaching a survivor at time t is `w * exp(-decay * t)` with weights 1/2/4 and decays 0.002/0.005/0.01 per s (stable/urgent/critical; modelling choices, not calibrated). A critical survivor is worth 4x a stable one at t = 0, 2.5x at 60 s, 1.5x at 120 s, and **less than a stable one after 173 s** (an urgent one after 231 s); the mean rescue time is about 190 s. So by the time the robot arrives, class says little about what a rescue is worth, and there is little for ordering to gain. We tested this by changing the reward shape (`scripts/run_reward_shape.py`; 8 survivors, T = 300 s, 160 sites, then 160 fresh sites; each setting scored against its own oracle; priority minus nearest-first, score):
+**Why ordering is null: the decay cancels the class weights.** The reward for reaching a survivor at time t is `w * exp(-decay * t)` with weights 1/2/4 and decays 0.002/0.005/0.01 per s (stable/urgent/critical; modelling choices, not calibrated). A critical survivor is worth 4x a stable one at t = 0, 2.5x at 60 s, 1.5x at 120 s, and **less than a stable one after 173 s** (an urgent one after 231 s); the mean rescue time is about 190 s. So by the time the robot arrives, class says little about what a rescue is worth, and there is little for ordering to gain. We tested this by changing the reward shape (`scripts/experiments/run_reward_shape.py`; 8 survivors, T = 300 s, 160 sites, then 160 fresh sites; each setting scored against its own oracle; priority minus nearest-first, score):
 
 **Table 4b.** Priority minus nearest-first by reward shape (`*` = interval excludes zero; 16 settings, uncorrected).
 
@@ -166,7 +166,7 @@ Both methods use the same prior; they differ only in whether the triage class se
 - **It still needs accurate labels.** At 80% labels none of the settings is positive and detectable, including the 1/4/16 weights (+0.012 +/- 0.029). This matches Table 4.
 - **Reading it:** this is a sensitivity analysis of an assumed reward, not evidence about real triage. It says priority ordering pays only if the class weight is large enough to survive the time decay and the drone's labels are about 90%+ accurate; with the default reward it does neither. Only two of the eight settings are detectable at 100% labels on both site sets, and with 16 settings some stars are expected by chance, so treat the pattern, not any single cell, as the finding.
 
-**What if the class weights are made bigger?** `scripts/run_reward_weights.py` raises the stable/urgent/critical weights from 1/2/4 to 1/4/16, 1/8/64 and 1/16/256 (default decay), in the default scene (3-8 survivors, T = 600 s) and in a capacity-limited one (8 survivors, T = 300 s), at 80, 90 and 100% class accuracy, 160 sites per cell.
+**What if the class weights are made bigger?** `scripts/experiments/run_reward_weights.py` raises the stable/urgent/critical weights from 1/2/4 to 1/4/16, 1/8/64 and 1/16/256 (default decay), in the default scene (3-8 survivors, T = 600 s) and in a capacity-limited one (8 survivors, T = 300 s), at 80, 90 and 100% class accuracy, 160 sites per cell.
 
 **Table 4c.** Priority minus nearest-first, score (time to critical in s in brackets), default scene; `*` = interval excludes zero (uncorrected; 12 cells).
 
@@ -213,7 +213,7 @@ Aggregate scores do not show why a survivor is lost. Each panel of Figure 5 is o
 
 ### Track retention: fixing the dropped-track loss
 
-`PriorSearch(retention=...)` (off by default, so every table above is unchanged). Variants are named for the remedy: `resume` (i), `region` (ii), `keep` (iii; the track's existence probability is held at the viability threshold until 90% of its 2-sigma disc has been under the sensor, and the robot searches the nearest unobserved point of that disc rather than only the mean). `scripts/run_retention.py` runs each on the same 160 sites and drone detections as the priority baseline; `scripts/run_retention_checks.py` repeats it on 160 fresh sites (seeds 1000+) and varies the region size and the false-positive rate. Nothing was tuned on these sites: the 2-sigma region and 90% threshold were fixed beforehand, and the 40-site probe used to debug the code is a subset of the first 160.
+`PriorSearch(retention=...)` (off by default, so every table above is unchanged). Variants are named for the remedy: `resume` (i), `region` (ii), `keep` (iii; the track's existence probability is held at the viability threshold until 90% of its 2-sigma disc has been under the sensor, and the robot searches the nearest unobserved point of that disc rather than only the mean). `scripts/experiments/run_retention.py` runs each on the same 160 sites and drone detections as the priority baseline; `scripts/experiments/run_retention_checks.py` repeats it on 160 fresh sites (seeds 1000+) and varies the region size and the false-positive rate. Nothing was tuned on these sites: the 2-sigma region and 90% threshold were fixed beforehand, and the 40-site probe used to debug the code is a subset of the first 160.
 
 **Table 5b.** Score, rescue rate and time to critical by position noise (160 sites; coverage uses no prior).
 
@@ -246,13 +246,13 @@ Aggregate scores do not show why a survivor is lost. Each panel of Figure 5 is o
 - **It moves the break-even point.** The prior with keep still beats no-prior coverage at sigma = 25 m (0.27 vs. 0.23); without it the prior fell below coverage at about 15 m (Table 1).
 - **Region size matters.** Fresh sites, score gain over the baseline at sigma = 6 / 15 m: 1-sigma region +0.034 / +0.097, 2-sigma +0.088 / +0.156, 3-sigma +0.077 / +0.133. The 1-sigma region is too small; 3 is no better than 2.
 - **False positives cost less than they save.** Keep also retains spurious tracks, but at sigma = 3 m the gain holds as they increase: +0.025 +/- 0.016 (0 false positives), +0.056 (1), +0.072 (6), +0.082 (20; fresh sites).
-- **A caveat on the closed-loop stack.** `StackConfig(retention="keep")` wires the same rule into the 10 Hz stack (10 m sensor, filter on, 100 sites, `scripts/ctrl_run_retention.py`). There it does not help: score difference +0.014 +/- 0.020 (sigma 3 m), +0.013 +/- 0.030 (6 m), -0.036 +/- 0.030 (10 m) and -0.033 +/- 0.019* (15 m); rescue rate -0.058 and -0.120* at 10 and 15 m. Safety is unaffected (0 clearance violations and 0 hazard entries with and without it). A plausible cause is that the closed-loop goal is the standoff of the track mean outside the safety region, so the robot holds a retained, unconfirmed track at the region's edge instead of searching its disc, and the larger sensor already sees most of what keep would add. We did not investigate, so the gain is established for the Q1-Q2 simulator (5 m sensor), not for the closed-loop stack.
+- **A caveat on the closed-loop stack.** `StackConfig(retention="keep")` wires the same rule into the 10 Hz stack (10 m sensor, filter on, 100 sites, `scripts/experiments/ctrl_run_retention.py`). There it does not help: score difference +0.014 +/- 0.020 (sigma 3 m), +0.013 +/- 0.030 (6 m), -0.036 +/- 0.030 (10 m) and -0.033 +/- 0.019* (15 m); rescue rate -0.058 and -0.120* at 10 and 15 m. Safety is unaffected (0 clearance violations and 0 hazard entries with and without it). A plausible cause is that the closed-loop goal is the standoff of the track mean outside the safety region, so the robot holds a retained, unconfirmed track at the region's edge instead of searching its disc, and the larger sensor already sees most of what keep would add. We did not investigate, so the gain is established for the Q1-Q2 simulator (5 m sensor), not for the closed-loop stack.
 
 ## Closed-loop results: Q3-Q5
 
 > **Note:** Tables 6-11 are from a rerun on the fixed stack (the two Go2 stack fixes on, same sites and settings). Q3 and Q5 moved by no more than noise. Q4 changed: the no-inference score in the triage regime rose from 0.59 to 0.67 (the fixes help most when the robot waits long at survivors), and the pooled full-system gain is now just detectable (+0.006 +/- 0.004). The Q4 ablation panels (`q4_ablations.png`) and the consistency check against Q1 (Table 12) were not rerun and are from the earlier stack.
 
-Control-rate Go2 sim, T = 600 s (300 s in the Q4 triage regime). **The default safety-region confidence is 0.7 (`StackConfig.conf_p`); every closed-loop result below uses it unless a table says otherwise.** **Q3 and Q4 use 100 sites per configuration (200 for the Q4 triage regime and 300 for the violation check); Q5 uses 100 scenarios.** Every comparison between methods is paired by site (same site, same drone detections) and reported as mean +/- 95% confidence half-width; a `*` marks an interval that excludes zero, uncorrected for multiple comparisons. `scripts/ctrl_stats.py` and `scripts/ctrl_plot.py` regenerate these tables and the figures from the sweep results. Figures are committed in [`figures/closed_loop/`](figures/closed_loop/).
+Control-rate Go2 sim, T = 600 s (300 s in the Q4 triage regime). **The default safety-region confidence is 0.7 (`StackConfig.conf_p`); every closed-loop result below uses it unless a table says otherwise.** **Q3 and Q4 use 100 sites per configuration (200 for the Q4 triage regime and 300 for the violation check); Q5 uses 100 scenarios.** Every comparison between methods is paired by site (same site, same drone detections) and reported as mean +/- 95% confidence half-width; a `*` marks an interval that excludes zero, uncorrected for multiple comparisons. `scripts/experiments/ctrl_stats.py` and `scripts/figures/ctrl_plot.py` regenerate these tables and the figures from the sweep results. Figures are committed in [`figures/closed_loop/`](figures/closed_loop/).
 
 Differences from the Q1-Q2 simulator: sensor radius 10 m (an onboard person detector), rescue radius 3.5 m (the robot confirms from a standoff outside the 1 m clearance), and survivors can move. Q3-Q4 scores are therefore not comparable with the Q1-Q2 tables in absolute terms; the consistency check below compares the trends. The survivor behavior, the reward models and the prompt-response model are modelling choices, not calibrated to people.
 
@@ -327,7 +327,7 @@ Inference quality at the default config: the full system infers the state with *
 
 With 4 survivors the robot can reach everyone and state information is worth nothing; any gain appears only as the site becomes capacity-limited. On the fixed stack no 200-site full-system gain excludes zero (8 survivors: +0.004 +/- 0.008; the 8-survivor row differs from Table 8 by 0.001 because the two runs are separate job sets).
 
-**Replication on fresh sites.** To check whether the 8-survivor gain was real, we reran the same configuration (no drone cue) on 500 new sites (seeds 1000 and up, disjoint from the original 200; `scripts/ctrl_run_q4_triage_large.py`):
+**Replication on fresh sites.** To check whether the 8-survivor gain was real, we reran the same configuration (no drone cue) on 500 new sites (seeds 1000 and up, disjoint from the original 200; `scripts/experiments/ctrl_run_q4_triage_large.py`):
 
 **Table 9b.** State-weighted score minus the no-inference baseline, triage regime, 8 survivors, T = 300 s, no drone cue.
 
@@ -375,7 +375,7 @@ On open ground with one distractor on the same side, mobile survivor, 100 scenar
 
 ### Consistency with Q1-Q2
 
-The two simulators differ on purpose, so we compare trends. Running the closed-loop sim over the Q1 prior sweeps (safety filter off, 100 sites, class-weighted score) and comparing relative score (score / score at the best setting) with the frozen Q1 tables (`scripts/ctrl_run_consistency.py`):
+The two simulators differ on purpose, so we compare trends. Running the closed-loop sim over the Q1 prior sweeps (safety filter off, 100 sites, class-weighted score) and comparing relative score (score / score at the best setting) with the frozen Q1 tables (`scripts/experiments/ctrl_run_consistency.py`):
 
 **Table 12.** Relative score (score / best setting): closed-loop sim vs. frozen Q1.
 
@@ -410,7 +410,7 @@ Both filters eliminate clearance violations. The closed-loop controller is the d
 
 ### Compute cost per layer
 
-`scripts/profile_layers.py` times each layer's calls with `perf_counter` on an otherwise idle machine (single process, Python, reduced-order unicycle plant, 6 sites of up to 300 s simulated). A 10 Hz layer has a 100 ms budget.
+`scripts/diagnostics/profile_layers.py` times each layer's calls with `perf_counter` on an otherwise idle machine (single process, Python, reduced-order unicycle plant, 6 sites of up to 300 s simulated). A 10 Hz layer has a 100 ms budget.
 
 **Table 12b.** Cost per call (ms), full stack.
 
@@ -429,7 +429,7 @@ What this does not measure: the Go2 policy inference and physics step, the drone
 
 ## MuJoCo Go2 with a learned locomotion policy (initial results)
 
-*Training, versions, rubble terrain and step-by-step reproduction are in [`sim.md`](sim.md).*
+*Training, versions, rubble terrain and step-by-step reproduction are in [`docs/sim.md`](docs/sim.md).*
 
 The results above use a reduced-order unicycle as the robot. Here the same stack drives a full Go2 model in MuJoCo, walking with a learned locomotion policy. The proposal planned this in Isaac Sim / Isaac Lab; it was done in MuJoCo instead, with the policy trained in mjlab (MuJoCo Warp). These are first results on fewer sites than the tables above (40 and 20 instead of 100).
 
@@ -437,7 +437,7 @@ Running the stack on the Go2 exposed a planner deadlock and a belief bug, both f
 
 **Setup.**
 - **Policy.** `Unitree-Go2-Flat` from [`unitree_rl_mjlab`](https://github.com/unitreerobotics/unitree_rl_mjlab): velocity tracking, PPO, 3000 iterations with 4096 environments (about 295M steps, 1 h 23 min on one laptop RTX 5070 Ti under WSL2). At the end of training, episodes ran the full 20 s with almost no falls.
-- **Rough-terrain policy.** `Unitree-Go2-Rough`, 3000 iterations with 2048 environments (4096 did not fit this GPU), about 1 h 55 min; its actor also takes a 17 x 11 height scan. Used only in [Physical rubble](#physical-rubble); everything else uses the flat policy. Details in [`sim.md`](sim.md).
+- **Rough-terrain policy.** `Unitree-Go2-Rough`, 3000 iterations with 2048 environments (4096 did not fit this GPU), about 1 h 55 min; its actor also takes a 17 x 11 height scan. Used only in [Physical rubble](#physical-rubble); everything else uses the flat policy. Details in [`docs/sim.md`](docs/sim.md).
 - **Plant.** `rescue/mj_plant.py` rebuilds the training robot in MuJoCo 3.5.0 (position actuators with the training gains, feet-only collision, the training solver settings) and runs the exported policy at 50 Hz on 200 Hz physics. Joint order, default pose, gains, action scale and the observation layout are read from, and checked against, the policy file's metadata.
 - **Interface.** The stack's 10 Hz `(v, omega)` command becomes the policy's velocity command, clipped to its training range (forward speed -0.5 to 1.0 m/s, yaw rate +/-1.0 rad/s), and the pose comes back from the simulated robot. On this plant the planner and filter also plan with the 1.0 rad/s turn rate (the unicycle uses 1.5).
 - **Unchanged.** The drone detections (`drone_prior.py` noise model), survivors and sensing. In the checks before [Physical rubble](#physical-rubble) the ground is a flat plane and rubble is only a speed cap in the stack; that section adds a heightfield and a policy trained on rough terrain.
@@ -446,7 +446,7 @@ Running the stack on the Go2 exposed a planner deadlock and a belief bug, both f
 
 **Figure 10.** The trained policy walking at 1.0 m/s, one 0.6 s gait cycle.
 
-**Tracking** (`scripts/mj_calibrate.py`). The robot stood, walked and turned without falling. It walks about 10% slower than commanded and turns close to the commanded rate.
+**Tracking** (`scripts/mujoco/mj_calibrate.py`). The robot stood, walked and turned without falling. It walks about 10% slower than commanded and turns close to the commanded rate.
 
 **Table 13.** Commanded vs. achieved speed and yaw rate (steady state, 3 s).
 
@@ -471,7 +471,7 @@ The pad in use, 0.25 m, covers the Go2's 95% gap, so it was left unchanged.
 
 ### Q3 on both plants
 
-`scripts/mj_run_q3.py`: 40 sites, sigma_meas 0.5 m, confidence 0.7, the same sites and drone detections on both plants.
+`scripts/mujoco/mj_run_q3.py`: 40 sites, sigma_meas 0.5 m, confidence 0.7, the same sites and drone detections on both plants.
 
 **Table 15.** Q3 on the unicycle and on the MuJoCo Go2.
 
@@ -486,7 +486,7 @@ The pad in use, 0.25 m, covers the Go2's 95% gap, so it was left unchanged.
 - **The legged robot costs score, the filter does not.** Paired by site, the Go2 scores 0.059 +/- 0.018 below the unicycle with the filter and 0.062 +/- 0.020 below it without, so the gap comes from the plant, not the filter. It rescues as many survivors; it gets to them later, because it walks slower than the search layer's travel-time estimates assume. The filter's own cost is within noise on both plants (-0.013 +/- 0.017 on the unicycle, -0.010 +/- 0.023 on the Go2).
 - **Closest approaches match.** With the filter, the Go2's closest approach per site is within 0.06 m of the unicycle's on average (0.30 m at most).
 
-**100-site replication.** The same check on 100 sites (`scripts/mj_run_q3.py 100`, 400 episodes, same sites and detections on both plants): score unicycle full 0.738, Go2 full 0.674, unicycle no filter 0.749, Go2 no filter 0.685; rescue rate 0.90-0.92 in all four. With the filter there were **0 clearance violations and 0 hazard entries on both plants, closest approach 2.39 m (unicycle) and 2.41 m (Go2), and no falls**; without it 59% of episodes violated on both (closest 0.04 and 0.03 m). Paired by site, the Go2 scores 0.064 +/- 0.015 below the unicycle both with and without the filter, and the filter's own cost is within noise on both plants (-0.011 +/- 0.013 unicycle, -0.011 +/- 0.015 Go2). The Go2 reaches critical survivors later (+23.9 +/- 16.8 s, filtered) at an unchanged rescue rate (+0.003 +/- 0.017). This tightens the 40-site gap estimate (0.059 +/- 0.018) and supports the same reading.
+**100-site replication.** The same check on 100 sites (`scripts/mujoco/mj_run_q3.py 100`, 400 episodes, same sites and detections on both plants): score unicycle full 0.738, Go2 full 0.674, unicycle no filter 0.749, Go2 no filter 0.685; rescue rate 0.90-0.92 in all four. With the filter there were **0 clearance violations and 0 hazard entries on both plants, closest approach 2.39 m (unicycle) and 2.41 m (Go2), and no falls**; without it 59% of episodes violated on both (closest 0.04 and 0.03 m). Paired by site, the Go2 scores 0.064 +/- 0.015 below the unicycle both with and without the filter, and the filter's own cost is within noise on both plants (-0.011 +/- 0.013 unicycle, -0.011 +/- 0.015 Go2). The Go2 reaches critical survivors later (+23.9 +/- 16.8 s, filtered) at an unchanged rescue rate (+0.003 +/- 0.017). This tightens the 40-site gap estimate (0.059 +/- 0.018) and supports the same reading.
 
 ![Site 0 on the Go2, with and without the safety filter](figures/mujoco/go2_q3_site_000.png)
 
@@ -507,7 +507,7 @@ In the first Go2 runs, site 6 rescued 1 of 8 survivors against 8 of 8 on the uni
 1. **Deadlock at a rescued survivor.** After rescuing a survivor at 31 s, the next target lay 41 m away on the far side of it. The route (a grid path) ran straight through the rescued survivor's keep-out region, which the MPC only treats as a soft cost. The Go2, planned with a 1.5 rad/s turn rate it cannot follow, was still at the region's edge when the MPC started going around, and from there every 2 s rollout cost more than standing still. It stood still for 516 s. The safety filter never intervened and the robot was never inside a region. **Fix:** the route goes around other survivors' regions and rescued survivors' keep-outs (`StackConfig.route_around_regions`), and on the Go2 the stack plans with the turn rate the policy can follow.
 2. **Waiting for a survivor who has left.** With the route fix, two sites at sigma_meas 1 m (16 and 18) stalled in a new way. A frightened survivor walked away faster than the robot's slow final approach, left sensor range, and its track stayed where it was last seen. A confirmed track never lost existence probability, and a rule that keeps the current target while the robot is within 4 m of it ("finish the survivor being handled") held the robot at that empty standoff for the rest of the episode. **Fix:** missed detections now lower a confirmed track's existence too (`StackConfig.forget_stale_tracks`), and the hold rule lets go once the track has faded. A re-detection restores the track at once.
 
-Both are on by default; setting either flag to `False` restores the old behavior. `tests/test_stack.py` rebuilds the site 6 situation from the logged state and checks that the robot now gets past the survivor; `tests/test_belief.py` checks that a confirmed track fades when nobody is there. `scripts/diag_stall.py` reruns the affected sites with the old stack, the route fix alone and both fixes: site 16 went from 1/6 (route fix alone) to 6/6, site 18 from 2/7 to 7/7.
+Both are on by default; setting either flag to `False` restores the old behavior. `tests/test_stack.py` rebuilds the site 6 situation from the logged state and checks that the robot now gets past the survivor; `tests/test_belief.py` checks that a confirmed track fades when nobody is there. `scripts/diagnostics/diag_stall.py` reruns the affected sites with the old stack, the route fix alone and both fixes: site 16 went from 1/6 (route fix alone) to 6/6, site 18 from 2/7 to 7/7.
 
 ![Site 6 on the Go2, before and after the fixes](figures/mujoco/go2_site_006.png)
 
@@ -517,7 +517,7 @@ Across all 400 episodes of Tables 15 and 16, the fixes left every mean within no
 
 ### Smaller safety regions
 
-`scripts/mj_run_conf.py`: 20 sites, sigma_meas 1.0 m, filter on, 240 episodes. No episode had a violation in any setting on either plant. The closest approach stayed at least 2.08 m, so the margins never got thin enough for the tracking-error pad to matter; the pad moves the closest approach out by about its own size.
+`scripts/mujoco/mj_run_conf.py`: 20 sites, sigma_meas 1.0 m, filter on, 240 episodes. No episode had a violation in any setting on either plant. The closest approach stayed at least 2.08 m, so the margins never got thin enough for the tracking-error pad to matter; the pad moves the closest approach out by about its own size.
 
 **Table 16.** Smaller safety regions, pad on and off.
 
@@ -536,7 +536,7 @@ Across all 400 episodes of Tables 15 and 16, the fixes left every mean within no
 
 ### Head-on stress test
 
-`scripts/mj_cbf_stress.py`. A controller walks the robot straight at a survivor whose position is known exactly, at 0.5 or 1.0 m/s, and the safety filter is the only thing that stops it. The filter guarantees a distance of at least the 1 m clearance plus the pad (for the model it assumes), and head-on it should stop 0.5 m beyond the clearance plus the pad (its barrier sits 0.25 m ahead of the robot with another 0.25 m of margin). Six runs per row. This test uses the filter alone, so the planner fixes do not affect it.
+`scripts/mujoco/mj_cbf_stress.py`. A controller walks the robot straight at a survivor whose position is known exactly, at 0.5 or 1.0 m/s, and the safety filter is the only thing that stops it. The filter guarantees a distance of at least the 1 m clearance plus the pad (for the model it assumes), and head-on it should stop 0.5 m beyond the clearance plus the pad (its barrier sits 0.25 m ahead of the robot with another 0.25 m of margin). Six runs per row. This test uses the filter alone, so the planner fixes do not affect it.
 
 **Table 17.** Head-on stress test, 0.5 and 1.0 m/s pooled.
 
@@ -557,7 +557,7 @@ The values are the same at both speeds to within 0.01 m. The Go2 stops about 0.1
 
 ### Sudden close-range threat
 
-`scripts/mj_sudden_threat.py`. The head-on test starts 6 m from a survivor the filter has known all along, so the barrier is never violated at the first step. Here the robot walks toward a far goal at 0.5 or 1.0 m/s with no survivor known, and after 3 s a survivor estimate appears 1.5, 2, 2.5, 3, 4 or 6 m ahead (the true survivor is there; the estimate carries the 0.5 m onboard measurement noise). This is what happens when the drone missed a survivor and the onboard detector sees them late, or a track jumps close. The nominal controller never slows down, so only the filter (confidence 0.7, pad 0.25 m, as in the stack) can stop the robot. Three versions: the estimate stays at its first noisy value (worst case), or the robot re-detects (90% detection probability) and Kalman-fuses each detection into the estimate, either at 10 Hz or at 1 Hz. **The stack's belief updates at 1 Hz, one detection per second**; the 10 Hz version corresponds to the optional `avg_meas` fusion, which is off by default (an earlier version of this section called the 10 Hz case "as in the stack"; it is not). Table 18 is the first run (10 seeds x 2 lateral offsets per cell, both plants, 960 filtered runs and 960 unfiltered); the 1 Hz rows and the sweep below use 30 seeds (60 runs per cell).
+`scripts/mujoco/mj_sudden_threat.py`. The head-on test starts 6 m from a survivor the filter has known all along, so the barrier is never violated at the first step. Here the robot walks toward a far goal at 0.5 or 1.0 m/s with no survivor known, and after 3 s a survivor estimate appears 1.5, 2, 2.5, 3, 4 or 6 m ahead (the true survivor is there; the estimate carries the 0.5 m onboard measurement noise). This is what happens when the drone missed a survivor and the onboard detector sees them late, or a track jumps close. The nominal controller never slows down, so only the filter (confidence 0.7, pad 0.25 m, as in the stack) can stop the robot. Three versions: the estimate stays at its first noisy value (worst case), or the robot re-detects (90% detection probability) and Kalman-fuses each detection into the estimate, either at 10 Hz or at 1 Hz. **The stack's belief updates at 1 Hz, one detection per second**; the 10 Hz version corresponds to the optional `avg_meas` fusion, which is off by default (an earlier version of this section called the 10 Hz case "as in the stack"; it is not). Table 18 is the first run (10 seeds x 2 lateral offsets per cell, both plants, 960 filtered runs and 960 unfiltered); the 1 Hz rows and the sweep below use 30 seeds (60 runs per cell).
 
 **Table 18.** Filtered runs that came within 1 m of the true survivor, out of 20 per cell (closest approach in m in brackets), by how far ahead the estimate appeared.
 
@@ -576,7 +576,7 @@ Without the filter every run violated, except where the survivor appeared 6 m ah
 - **With one bad sighting it can be beaten.** The violations in the one-estimate rows come from the seeds whose first estimate was off by 1.0 m or more (the median first-sighting error was 0.43 m). The filter keeps about 2.3-2.5 m from the *estimate*, so a first sighting wrong by more than roughly 1.3 m toward the robot, never corrected, puts the robot inside 1 m of the true survivor. At confidence 0.7 the region around a fresh track is small (0.8 m), so this is where a higher confidence would matter again, at the cost reported in Q3. The 1.5-2 m appearances are also partly unavoidable, since the barrier is already violated when the survivor appears.
 - **The Go2 behaves like the unicycle**, with 0.1-0.3 m more margin at 0.5 m/s, consistent with Table 17.
 
-**Table 18b.** The same test with 1 Hz re-detection, the stack's belief update rate (`scripts/mj_sudden_fresh.py`, 30 seeds x 2 lateral offsets = 60 filtered runs per cell). Runs within 1 m of the true survivor, closest approach in m in brackets. Top: confidence 0.7 everywhere (the stack's default). Bottom: confidence 0.99 on fresh tracks (fewer than 5 detections fused), 0.7 after.
+**Table 18b.** The same test with 1 Hz re-detection, the stack's belief update rate (`scripts/mujoco/mj_sudden_fresh.py`, 30 seeds x 2 lateral offsets = 60 filtered runs per cell). Runs within 1 m of the true survivor, closest approach in m in brackets. Top: confidence 0.7 everywhere (the stack's default). Bottom: confidence 0.99 on fresh tracks (fewer than 5 detections fused), 0.7 after.
 
 | Confidence | Plant, speed (m/s) | 1.5 m | 2.0 m | 2.5 m | 3.0 m | 4.0 m | 6.0 m |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -593,7 +593,7 @@ At the stack's rate, 9 of 1,440 filtered runs violate, all at a 1.5 m appearance
 
 #### Through the real stack
 
-`scripts/mj_sudden_stack.py`. The stand-alone test hands the filter the estimate at t = 3.0 s, which is a plan tick, and re-detects on later ticks. In the stack a first sighting reaches the belief only at the next 1 Hz plan tick, and the belief gets one 10 Hz sample per second, which is a hit 90% of the time. So the stand-alone numbers could be optimistic. Here `run_episode_ctrl` runs the whole stack (belief, 1 Hz search and plan, MPC, CBF filter): the drone found a goal survivor 25 m ahead (exact prior) and missed a second one at x = 10 m on the path (lateral offset 0 or 0.7 m). The onboard sensor radius is set to the appearance distance, so the missed survivor is first sensed that far away; the rescue radius is 0 so the robot never "rescues" (and so never learns the position of) the survivor it should not know about. Violation = robot centre within 1 m of the missed survivor at any 10 Hz control step. 30 seeds x 2 offsets = 60 runs per cell, both plants (flat MuJoCo Go2), no falls. Measured on the 1,440 filtered runs: the survivor was always sensed and always reached the belief, with a **sense-to-belief latency of 0.63 s on average (median 0.60, 90th percentile 1.4, maximum 2.5 s)**, which is the extra distance of 0.4 m on average (up to 2.5 m) the robot walks before the filter knows.
+`scripts/mujoco/mj_sudden_stack.py`. The stand-alone test hands the filter the estimate at t = 3.0 s, which is a plan tick, and re-detects on later ticks. In the stack a first sighting reaches the belief only at the next 1 Hz plan tick, and the belief gets one 10 Hz sample per second, which is a hit 90% of the time. So the stand-alone numbers could be optimistic. Here `run_episode_ctrl` runs the whole stack (belief, 1 Hz search and plan, MPC, CBF filter): the drone found a goal survivor 25 m ahead (exact prior) and missed a second one at x = 10 m on the path (lateral offset 0 or 0.7 m). The onboard sensor radius is set to the appearance distance, so the missed survivor is first sensed that far away; the rescue radius is 0 so the robot never "rescues" (and so never learns the position of) the survivor it should not know about. Violation = robot centre within 1 m of the missed survivor at any 10 Hz control step. 30 seeds x 2 offsets = 60 runs per cell, both plants (flat MuJoCo Go2), no falls. Measured on the 1,440 filtered runs: the survivor was always sensed and always reached the belief, with a **sense-to-belief latency of 0.63 s on average (median 0.60, 90th percentile 1.4, maximum 2.5 s)**, which is the extra distance of 0.4 m on average (up to 2.5 m) the robot walks before the filter knows.
 
 **Table 18e.** Runs (of 60) within 1 m of the missed survivor, full stack (MPC + filter) and MPC without the filter, by distance at which the survivor is first sensed.
 
@@ -623,12 +623,12 @@ At the stack's rate, 9 of 1,440 filtered runs violate, all at a 1.5 m appearance
 | Go2 0.5 | off / on | 2 / 0 | 1 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
 | Go2 1.0 | off / on | 8 / 0 | 14 / 0 | 2 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
 
-- **The 10 Hz path costs nothing on the closed-loop benchmark, but this benchmark does not exercise it.** `scripts/ctrl_run_fast_detect.py`, unicycle, 100 sites, sigma_meas 0.5 m, full stack: score 0.738 with the path off and on, rescue rate 0.90, no clearance violations or hazard entries, closest approach 2.39 m in both; the paired score difference is +0.000 +/- 0.000. Only 1 of 100 sites differs at all (site 81: 0.8501 vs 0.8508). Provisional tracks do occur (one at a time in the sites I checked), and are dropped as soon as the belief holds the survivor, so with the 10 m sensor they sit far from the robot and never constrain it. This shows the path is harmless where survivors are seen early; it does not show a benefit there. Rubble and the MuJoCo Go2 were not rerun.
-- **Rubble and the Go2 (`scripts/mj_run_fast_detect_rubble.py`, rough policy, 100 sites):** off and on are identical: score 0.666, rescue rate 0.89, no clearance violations, hazard entries or falls, closest approach 2.44 m (this is 0.004 below Table 20's 0.670; not traced, likely run-to-run variation in MuJoCo).
+- **The 10 Hz path costs nothing on the closed-loop benchmark, but this benchmark does not exercise it.** `scripts/experiments/ctrl_run_fast_detect.py`, unicycle, 100 sites, sigma_meas 0.5 m, full stack: score 0.738 with the path off and on, rescue rate 0.90, no clearance violations or hazard entries, closest approach 2.39 m in both; the paired score difference is +0.000 +/- 0.000. Only 1 of 100 sites differs at all (site 81: 0.8501 vs 0.8508). Provisional tracks do occur (one at a time in the sites I checked), and are dropped as soon as the belief holds the survivor, so with the 10 m sensor they sit far from the robot and never constrain it. This shows the path is harmless where survivors are seen early; it does not show a benefit there. Rubble and the MuJoCo Go2 were not rerun.
+- **Rubble and the Go2 (`scripts/mujoco/mj_run_fast_detect_rubble.py`, rough policy, 100 sites):** off and on are identical: score 0.666, rescue rate 0.89, no clearance violations, hazard entries or falls, closest approach 2.44 m (this is 0.004 below Table 20's 0.670; not traced, likely run-to-run variation in MuJoCo).
 - **Adding a 0.75 m/s speed** (all 2,160 runs per variant, 30 seeds): default 111 violating runs, `fast_detect` 13 (`conf_fresh` 0.99 with it: 12), MPC alone 217; no falls. Go2 with `fast_detect`: none at any speed.
-- **A lower speed is the only fix left for the 1.5 m case, and it is expensive** (`scripts/ctrl_run_speed_cost.py`, unicycle, 100 sites, `fast_detect` on): speed cap 1.0 / 0.75 / 0.5 gives score 0.738 / 0.600 / 0.402 and rescue rate 0.90 / 0.86 / 0.73, no violations in any; paired score difference -0.138 +/- 0.016 and -0.336 +/- 0.028. A blanket cap costs far more than the roughly 10 of 1,440 runs it would fix. Slowing only where a survivor could appear close needs an occlusion model, which this simulator does not have (the 10 m sensor covers all ground near the robot), so that version is untested. This is also the first setting in which safety is not free on this benchmark.
+- **A lower speed is the only fix left for the 1.5 m case, and it is expensive** (`scripts/experiments/ctrl_run_speed_cost.py`, unicycle, 100 sites, `fast_detect` on): speed cap 1.0 / 0.75 / 0.5 gives score 0.738 / 0.600 / 0.402 and rescue rate 0.90 / 0.86 / 0.73, no violations in any; paired score difference -0.138 +/- 0.016 and -0.336 +/- 0.028. A blanket cap costs far more than the roughly 10 of 1,440 runs it would fix. Slowing only where a survivor could appear close needs an occlusion model, which this simulator does not have (the 10 m sensor covers all ground near the robot), so that version is untested. This is also the first setting in which safety is not free on this benchmark.
 
-**Table 18g.** Does `fast_detect` hurt when the onboard detector has false detections? (`scripts/ctrl_run_fast_detect_fp.py`, unicycle, 100 sites, sigma_meas 0.5 m; false detections at a Poisson rate per second at a uniform random point within the radius of the robot; violations are against true survivors only.)
+**Table 18g.** Does `fast_detect` hurt when the onboard detector has false detections? (`scripts/experiments/ctrl_run_fast_detect_fp.py`, unicycle, 100 sites, sigma_meas 0.5 m; false detections at a Poisson rate per second at a uniform random point within the radius of the robot; violations are against true survivors only.)
 
 | Rate (/s) | Radius (m) | Score off | Score on | Paired difference | Rescue off / on | Closest approach off / on (m) | Violations |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -649,7 +649,7 @@ The 1 Hz stand-alone rows in Tables 18b-18d (and the 10 Hz rows) should be read 
 
 #### Higher confidence on fresh tracks
 
-The weak spot is a bad first sighting. `StackConfig.conf_fresh` / `n_fresh` (off by default) give a robot-detected track with fewer than `n_fresh` detections fused a higher confidence than `conf_p`; tracks that only have the drone prior keep `conf_p`. Sweep over `scripts/mj_sudden_fresh.py` (1,440 filtered runs per entry; the fresh window did not change any count, so one column per confidence):
+The weak spot is a bad first sighting. `StackConfig.conf_fresh` / `n_fresh` (off by default) give a robot-detected track with fewer than `n_fresh` detections fused a higher confidence than `conf_p`; tracks that only have the drone prior keep `conf_p`. Sweep over `scripts/mujoco/mj_sudden_fresh.py` (1,440 filtered runs per entry; the fresh window did not change any count, so one column per confidence):
 
 **Table 18c.** Filtered runs within 1 m, out of 1,440, by confidence on fresh tracks.
 
@@ -659,7 +659,7 @@ The weak spot is a bad first sighting. `StackConfig.conf_fresh` / `n_fresh` (off
 | 1 Hz (the stack) | 9 (0.39 m) | 8 | 7 | 6 (0.62 m) |
 | 10 Hz (`avg_meas`) | 0 | 0 | 0 | 0 |
 
-**Table 18d.** Cost on rubble (`scripts/mj_run_q3_rubble_conf.py`, `mj_run_q3_rubble_fresh.py`; rough policy, 100 sites, sigma_meas 0.5 m, pad 0.25 m). No clearance violations, hazard entries or falls in any row.
+**Table 18d.** Cost on rubble (`scripts/mujoco/mj_run_q3_rubble_conf.py`, `mj_run_q3_rubble_fresh.py`; rough policy, 100 sites, sigma_meas 0.5 m, pad 0.25 m). No clearance violations, hazard entries or falls in any row.
 
 | Confidence | Score | Rescue rate | Min. distance (m) |
 | --- | --- | --- | --- |
@@ -676,9 +676,9 @@ The weak spot is a bad first sighting. `StackConfig.conf_fresh` / `n_fresh` (off
 
 ### Physical rubble
 
-Until here the Go2 walked on a flat plane and rubble was only a speed cap in the stack. `rescue/mj_terrain.py` now builds a MuJoCo heightfield from a site's regions (rubble cells 0-6 cm, hazard cells 0-10 cm, random per 0.1 m cell in 2 cm steps, a flat disc at the start; `Go2MujocoPlant(rubble=True)`), and the policy was retrained on rough terrain (`Unitree-Go2-Rough`, 3000 iterations; its actor also takes a height scan, which the plant supplies). The stack still caps speed in those regions. Training, versions and reproduction are in [`sim.md`](sim.md).
+Until here the Go2 walked on a flat plane and rubble was only a speed cap in the stack. `rescue/mj_terrain.py` now builds a MuJoCo heightfield from a site's regions (rubble cells 0-6 cm, hazard cells 0-10 cm, random per 0.1 m cell in 2 cm steps, a flat disc at the start; `Go2MujocoPlant(rubble=True)`), and the policy was retrained on rough terrain (`Unitree-Go2-Rough`, 3000 iterations; its actor also takes a height scan, which the plant supplies). The stack still caps speed in those regions. Training, versions and reproduction are in [`docs/sim.md`](docs/sim.md).
 
-**Table 19.** Tracking on each ground type, 200 random starts, error after 1 s against the ideal unicycle (`scripts/mj_rubble_calibrate.py`).
+**Table 19.** Tracking on each ground type, 200 random starts, error after 1 s against the ideal unicycle (`scripts/mujoco/mj_rubble_calibrate.py`).
 
 | Ground | Policy | Falls | Median | 95% | 99% |
 | --- | --- | --- | --- | --- | --- |
@@ -689,7 +689,7 @@ Until here the Go2 walked on a flat plane and rubble was only a speed cap in the
 | Hazard | flat-trained | 34 / 200 | 0.426 m | 0.847 m | 0.952 m |
 | Hazard | rough-trained | 9 / 200 | 0.284 m | 0.801 m | 0.920 m |
 
-**Table 20.** Q3 on rubble (`scripts/mj_run_q3_rubble.py`, 100 sites, sigma_meas 0.5 m, confidence 0.7, pad 0.25 m; an episode ends when the robot falls).
+**Table 20.** Q3 on rubble (`scripts/mujoco/mj_run_q3_rubble.py`, 100 sites, sigma_meas 0.5 m, confidence 0.7, pad 0.25 m; an episode ends when the robot falls).
 
 | Plant | Variant | Score | Rescue rate | Episodes with clearance violation | Min. distance (m) | Falls |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -708,7 +708,7 @@ Until here the Go2 walked on a flat plane and rubble was only a speed cap in the
 - **A bug in the first 40-site run.** The heightfield ended at the site bounds and a robot walking past the edge fell off the map, which gave 6 of 40 falls with the rough policy. The terrain now has a 10 m flat margin and the numbers above are from the rerun on 100 sites.
 - Hazard ground is still hard (9 of 200 falls and 0.80 m tracking error in Table 19), but the filter keeps the robot out of it. Other noise levels and a larger pad are in Table 21.
 
-**Table 21.** Q3 on rubble at other noise levels and with a larger pad (`scripts/mj_run_q3_rubble_sweep.py`, rough policy, 100 sites, confidence 0.7). The 0.5 m / 0.25 m rows are from Table 20; the no-filter run does not depend on the pad.
+**Table 21.** Q3 on rubble at other noise levels and with a larger pad (`scripts/mujoco/mj_run_q3_rubble_sweep.py`, rough policy, 100 sites, confidence 0.7). The 0.5 m / 0.25 m rows are from Table 20; the no-filter run does not depend on the pad.
 
 | sigma_meas | Pad | Variant | Score | Rescue rate | Episodes with clearance violation | Min. distance (m) | Falls |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -725,7 +725,7 @@ Until here the Go2 walked on a flat plane and rubble was only a speed cap in the
 - **The filter's cost is small and does not grow with noise** (0.012-0.016 score, 2-3 points of rescue rate at every level). The score falls with noise (0.67, 0.56, 0.52) for both variants, which is the noise itself, not the filter.
 - **The no-filter baseline barely depends on noise**, so these runs do not show the filter protecting more at high noise, only equally.
 
-**Table 22.** Q3 on rubble with smaller safety margins (`scripts/mj_run_q3_rubble_margins.py`, rough policy, 100 sites, sigma_meas 0.5 m, full stack). The survivor barrier sits at `c_p * sigma + d_clear + pad + 0.25 m` (control-point offset) from the belief mean; a violation is the robot centre within 1 m of a survivor. The `d_clear` 0.4, 0.25 and 0 rows are a second run (`... margins.py 100 16 low`).
+**Table 22.** Q3 on rubble with smaller safety margins (`scripts/mujoco/mj_run_q3_rubble_margins.py`, rough policy, 100 sites, sigma_meas 0.5 m, full stack). The survivor barrier sits at `c_p * sigma + d_clear + pad + 0.25 m` (control-point offset) from the belief mean; a violation is the robot centre within 1 m of a survivor. The `d_clear` 0.4, 0.25 and 0 rows are a second run (`... margins.py 100 16 low`).
 
 | Confidence | Pad | d_clear | Score | Rescue rate | Episodes with clearance violation | Min. distance (m) | Hazard entries | Falls |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -751,13 +751,13 @@ Until here the Go2 walked on a flat plane and rubble was only a speed cap in the
 
 ![Violations and closest approach vs. d_clear on rubble](figures/mujoco/rubble_margins.png)
 
-**Figure 20.** Left: fraction of the 100 rubble episodes with a clearance violation against the required clearance `d_clear`, with confidence 0.01 and no pad (so `d_clear` is the only margin left); from Table 22. Right: the closest approach in those episodes (solid: the closest of 100; faded: the median episode) against the 1 m violation line and a `d_clear` + 0.5 m guide. The gray circles at `d_clear` 1.0 are the closest approaches of the other confidence and pad settings in Table 22 (1.66-2.41 m). `scripts/plot_rubble_margins.py`.
+**Figure 20.** Left: fraction of the 100 rubble episodes with a clearance violation against the required clearance `d_clear`, with confidence 0.01 and no pad (so `d_clear` is the only margin left); from Table 22. Right: the closest approach in those episodes (solid: the closest of 100; faded: the median episode) against the 1 m violation line and a `d_clear` + 0.5 m guide. The gray circles at `d_clear` 1.0 are the closest approaches of the other confidence and pad settings in Table 22 (1.66-2.41 m). `scripts/figures/plot_rubble_margins.py`.
 
 **What the sweep shows.** On rubble, the one margin that decides safety is the required clearance itself: the confidence ellipse, the tracking pad and the noise level all had slack, and the closest approach followed `d_clear` + about 0.5 m down to the 1 m line. Nothing in these runs shows the pad or the ellipse doing work; they are not what keeps the robot out of the 1 m zone here.
 
 #### Does the pad bind? Injected tracking error
 
-Every closed-loop rubble run left the pad and the ellipse slack (above), so the claim that the 0.25 m pad is "derived from the measured tracking error" had never been shown to matter. `scripts/pad_binding.py` makes it matter. A closed-loop episode rarely exercises the barrier (the standoff goal sits 0.1 m outside it), so the test is head-on: the nominal controller drives at a survivor and the filter alone stops the robot, so the barrier is active in every run. The plant (`rescue/dist_plant.py`) is the unicycle plus an unmodelled position disturbance (2-D Ornstein-Uhlenbeck velocity, time constant 1 s), which the planner and filter do not know about. Disturbance levels are labelled by the same statistic the pad is derived from, the 95% gap after 1 s against the ideal unicycle (the bare unicycle's own gap is 0.27 m; the Go2 numbers in Table 19 are 0.2-0.95 m). 300 random starts x 2 speeds = 600 runs per cell; violation = robot centre within 1 m of the true survivor. Three cases: `exact` (estimate exact), `ellipse` (estimate error 0.5 m, confidence 0.7, the stack's setting; the true survivor is drawn around the estimate) and `no ellipse` (the same with confidence 0.01).
+Every closed-loop rubble run left the pad and the ellipse slack (above), so the claim that the 0.25 m pad is "derived from the measured tracking error" had never been shown to matter. `scripts/diagnostics/pad_binding.py` makes it matter. A closed-loop episode rarely exercises the barrier (the standoff goal sits 0.1 m outside it), so the test is head-on: the nominal controller drives at a survivor and the filter alone stops the robot, so the barrier is active in every run. The plant (`rescue/dist_plant.py`) is the unicycle plus an unmodelled position disturbance (2-D Ornstein-Uhlenbeck velocity, time constant 1 s), which the planner and filter do not know about. Disturbance levels are labelled by the same statistic the pad is derived from, the 95% gap after 1 s against the ideal unicycle (the bare unicycle's own gap is 0.27 m; the Go2 numbers in Table 19 are 0.2-0.95 m). 300 random starts x 2 speeds = 600 runs per cell; violation = robot centre within 1 m of the true survivor. Three cases: `exact` (estimate exact), `ellipse` (estimate error 0.5 m, confidence 0.7, the stack's setting; the true survivor is drawn around the estimate) and `no ellipse` (the same with confidence 0.01).
 
 **Table 23.** Runs (of 600) within 1 m of the survivor, by injected tracking error (95% gap after 1 s) and pad; closest approach in m in brackets.
 
@@ -812,7 +812,7 @@ On physical rubble (a heightfield, with a policy retrained on rough terrain) the
 
 **Persistence gate for `fast_detect`** (`StackConfig.fast_gate`, `fast_window` 0.5 s): a provisional track reaches the filter only after `fast_gate` detections of it within the window. A real survivor in range is detected on about 90% of 10 Hz steps, so a gate of 3 delays the barrier by about 0.2-0.3 s; a phantom rarely repeats at the same place.
 
-**Table 24.** Clutter cost, paired score difference against `fast_detect` off (100 sites, unicycle; `scripts/ctrl_run_fast_detect_fp.py 100 W gate`). Violations were 0 everywhere.
+**Table 24.** Clutter cost, paired score difference against `fast_detect` off (100 sites, unicycle; `scripts/experiments/ctrl_run_fast_detect_fp.py 100 W gate`). Violations were 0 everywhere.
 
 | False detections (per s, radius m) | on, gate 1 | on, gate 2 | on, gate 3 |
 | --- | --- | --- | --- |
@@ -822,7 +822,7 @@ On physical rubble (a heightfield, with a policy retrained on rough terrain) the
 | 2.0, 10 | -0.065 +/- 0.027 | +0.004 +/- 0.011 | -0.002 +/- 0.007 |
 | 2.0, 4 | -0.245 +/- 0.023 | -0.017 +/- 0.016 | -0.005 +/- 0.008 |
 
-**Table 25.** Sudden-threat runs with a violation, of 2,160 per variant (6 appearance distances x 3 speeds x 2 lateral offsets x 30 seeds x 2 plants; `scripts/mj_sudden_stack.py 30 W gate`).
+**Table 25.** Sudden-threat runs with a violation, of 2,160 per variant (6 appearance distances x 3 speeds x 2 lateral offsets x 30 seeds x 2 plants; `scripts/mujoco/mj_sudden_stack.py 30 W gate`).
 
 | Variant | Unicycle | Go2 (MuJoCo) | Total |
 | --- | --- | --- | --- |
@@ -845,7 +845,7 @@ Speed for zero violations at 1.5 m is 0.5 m/s on the unicycle and 1.0 m/s on the
 
 **Filter against a disc-only MPC.** The "MPC alone" rows above give the MPC only the belief's keep-out discs, which arrive at the 1 Hz plan tick, so they compare the filter with a controller that also knows less. The fair baseline (`StackConfig(apply_filter=False, mpc_fast=True)`) gives the MPC the same gated 10 Hz tracks as the filter, as soft keep-out discs of the same radius, and drops only the CBF-QP.
 
-**Table 26.** Sudden-threat runs with a violation, of 2,160 per variant (same sweep as Table 25; `scripts/mj_sudden_stack.py 30 W disc`; gate 3 throughout).
+**Table 26.** Sudden-threat runs with a violation, of 2,160 per variant (same sweep as Table 25; `scripts/mujoco/mj_sudden_stack.py 30 W disc`; gate 3 throughout).
 
 | Variant | Unicycle | Go2 (MuJoCo) | Total |
 | --- | --- | --- | --- |
@@ -855,7 +855,7 @@ Speed for zero violations at 1.5 m is 0.5 m/s on the unicycle and 1.0 m/s on the
 
 By first-sighting distance, runs with a violation of 60 per cell, filter / disc-only MPC: at 1.5 m the unicycle has 0 / 6 (0.5 m/s), 6 / 27 (0.75) and 10 / 31 (1.0), and the Go2 has 0 / 0, 1 / 0 and 0 / 12. At 2.0 m only the unicycle at 1.0 m/s differs (0 / 5). At 2.5 m and beyond the disc-only MPC had no violation, and the filter had 3 (one each at unicycle 1.0, Go2 0.75 and Go2 1.0 m/s, all at 2.5 m). Neither variant fell. So the filter's hard constraint is worth about a factor of four over the soft disc at the same information (20 against 81 of 2,160), and the fast path itself accounts for most of the rest (81 against 217). The advantage is concentrated at late sightings (1.5 m) and high speed; it is not uniform, and at 2.5 m the soft disc did slightly better (0 against 3, too few to separate).
 
-**Table 27.** Head-on test, filter against disc-only MPC (`scripts/mj_headon_mpc.py 10 3`; 80 runs per cell: 8 heading offsets x 10 seeds, survivor known exactly, start 6 m away; MPC goal 6 m beyond the survivor). Closest approach in m, minimum over runs; no run broke the filter's bound or got inside 1 m in any cell, and none fell.
+**Table 27.** Head-on test, filter against disc-only MPC (`scripts/mujoco/mj_headon_mpc.py 10 3`; 80 runs per cell: 8 heading offsets x 10 seeds, survivor known exactly, start 6 m away; MPC goal 6 m beyond the survivor). Closest approach in m, minimum over runs; no run broke the filter's bound or got inside 1 m in any cell, and none fell.
 
 | Plant | Pad (m) | Speed (m/s) | Filter | Disc-only MPC |
 | --- | --- | --- | --- | --- |
@@ -870,9 +870,9 @@ By first-sighting distance, runs with a violation of 60 per cell, filter / disc-
 
 Head-on with an exact estimate does not separate the two: the soft disc, sized to the filter's own margin, holds the 1 m line too, and ends 0.04-0.14 m closer than the filter on 6 of 8 cells (at most 0.14 m, on the Go2 at 1.0 m/s), still 0.45 m or more outside it. This test starts 6 m out, so the controller always has room to react. The separation in Table 26 comes from late sightings, where the soft cost cannot brake in time and the hard constraint can. What this does not show: a disc MPC with a different weight or horizon (the stack's `w_clear` 8 and 2 s horizon were not tuned for this), and noisy estimates in the head-on test.
 
-**Item 3 on the Go2** (`scripts/mj_pad_binding.py 40 W`; 40 runs per cell, 3 pads x 2 speeds x 2 cases per plant). Observed 1 s tracking gap, 95th percentile over runs: flat 0.19 m, rubble with the rough policy 0.71 m, rubble with the flat policy 0.89 m (Table 19's 0.36 m and 0.59 m are medians over random starts; this is the tail of head-on runs). **Zero violations in every cell** (each cell 0 of 40, 95% upper bound 9%); closest approach with the pad at 0 was 1.5-1.6 m (exact estimate) and 1.3-1.7 m (estimate error 0.5 m), about 0.5 m above the 1 m line. Falls: none on flat, 2-3 of 40 per cell on rubble and 4-11 of 40 with the flat policy, the same across pads (terrain, not the filter). So on the simulated Go2 the pad did **not** bind in a head-on approach, even when the observed gap exceeded the 0.5 m of slack: the filter has slowed the robot to a stop by then, and the Go2's error shrinks with speed whereas the injected error of Table 23 does not. Table 23 shows the pad is able to bind; this shows the Go2 as simulated does not put it there. A lateral pass at speed is untested.
+**Item 3 on the Go2** (`scripts/mujoco/mj_pad_binding.py 40 W`; 40 runs per cell, 3 pads x 2 speeds x 2 cases per plant). Observed 1 s tracking gap, 95th percentile over runs: flat 0.19 m, rubble with the rough policy 0.71 m, rubble with the flat policy 0.89 m (Table 19's 0.36 m and 0.59 m are medians over random starts; this is the tail of head-on runs). **Zero violations in every cell** (each cell 0 of 40, 95% upper bound 9%); closest approach with the pad at 0 was 1.5-1.6 m (exact estimate) and 1.3-1.7 m (estimate error 0.5 m), about 0.5 m above the 1 m line. Falls: none on flat, 2-3 of 40 per cell on rubble and 4-11 of 40 with the flat policy, the same across pads (terrain, not the filter). So on the simulated Go2 the pad did **not** bind in a head-on approach, even when the observed gap exceeded the 0.5 m of slack: the filter has slowed the robot to a stop by then, and the Go2's error shrinks with speed whereas the injected error of Table 23 does not. Table 23 shows the pad is able to bind; this shows the Go2 as simulated does not put it there. A lateral pass at speed is untested.
 
-**Item 4: why score did not move.** The robot confirms from up to 3.5 m and every standoff the margins asked for (1.8-2.7 m) is inside that, so margins could not change when a survivor was reached. With the standoff set by the margins (`r_stand` 1 m) and the confirm range shortened, the trade-off appears (60 sites, unicycle, sigma_meas 0.5; `scripts/ctrl_run_tradeoff.py 60 W a`):
+**Item 4: why score did not move.** The robot confirms from up to 3.5 m and every standoff the margins asked for (1.8-2.7 m) is inside that, so margins could not change when a survivor was reached. With the standoff set by the margins (`r_stand` 1 m) and the confirm range shortened, the trade-off appears (60 sites, unicycle, sigma_meas 0.5; `scripts/experiments/ctrl_run_tradeoff.py 60 W a`):
 
 **Table 26.** Score, rescue rate, violations (of 60, 95% interval) and closest-approach slack, by margins and confirm range. Margins: wide (c 0.9, d_clear 1.0, pad 0.25), stock (0.7, 1.0, 0.25), tight (0.3, 1.0, 0), min (0.01, 0.5, 0).
 
@@ -893,7 +893,7 @@ Head-on with an exact estimate does not separate the two: the soft disc, sized t
 
 Margins now cost score when the confirm range is short: at 2 m the stock margins rescue 16% of survivors, the tight ones 86% with slack still +0.54 m, and the minimum margins 92% at the price of violations in 4 of 60 runs. **At the 3.5 m range the margins are free, which is why the rubble sweep was flat; that is a property of the range, not of safety margins.** The usable frontier in this table is the tight margins at 2 m, where the slack is positive. (At 3.5 m the score is slightly higher with smaller margins, because the shorter standoff shortens the approach.)
 
-**Item 5: noise and the baselines** (8 survivors, 20 sites, unicycle; `scripts/ctrl_run_tradeoff.py 20 W b`; limited to 8 survivors because the oracle brute-forces all visiting orders, now guarded at 9).
+**Item 5: noise and the baselines** (8 survivors, 20 sites, unicycle; `scripts/experiments/ctrl_run_tradeoff.py 20 W b`; limited to 8 survivors because the oracle brute-forces all visiting orders, now guarded at 9).
 
 **Table 27.** Per cell: runs with a violation of 20 (95% interval), violation-seconds, closest approach p5 (m), score.
 
@@ -906,7 +906,7 @@ Margins now cost score when the confirm range is short: at 2 m the stock margins
 
 The unfiltered robot violates in 70-75% of runs at every noise level because its path ignores the belief, so noise cannot change it; a closest approach near 0.1 m means it walks through survivors. A baseline that does use the belief (the full stack's MPC with keep-out discs, filter off) is already safe at every noise level (0 of 20, upper bound 16%). So **a noise sweep on this benchmark cannot show the filter protecting more; the filter's value over a disc-only MPC was not measured in the sudden-threat or head-on tests** (the `no_cbf` variant there has no discs either). The full stack costs 0.003-0.04 score against no filter for removing 70-75 points of violation rate (0.0000-0.0005 score per point).
 
-**Item 6: where the closest approach comes from** (`scripts/margin_decomp.py 20 W`; 2,160 head-on runs, ideal unicycle, exact estimate). A fit over d_clear, pad, cp_offset (0 to 0.25) and speed gives
+**Item 6: where the closest approach comes from** (`scripts/diagnostics/margin_decomp.py 20 W`; 2,160 head-on runs, ideal unicycle, exact estimate). A fit over d_clear, pad, cp_offset (0 to 0.25) and speed gives
 
 closest approach = 0.01 + 1.00 * d_clear + 1.00 * eps_track + 2.00 * cp_offset, RMS residual 0.001 m.
 
@@ -922,7 +922,7 @@ Survivors are a crude stand-in for people: three states, constant-speed motion, 
 
 ## Layout
 
-`sim.md` documents the simulators, the policy training and how to reproduce the MuJoCo results.
+`docs/sim.md` documents the simulators, the policy training and how to reproduce the MuJoCo results.
 
 ```
 rescue/
@@ -944,38 +944,13 @@ rescue/
   mj_plant.py      # MuJoCo Go2 + learned locomotion policy (flat or rough-terrain), optional plant for ctrl_sim
   mj_terrain.py    # rubble heightfield from a Site's regions
 sim/go2/           # trained policies (policy.onnx flat, policy_rough.onnx rough), their training configs, the Go2 MuJoCo model
-sim.md             # simulators, policy training and how to reproduce the MuJoCo results
-scripts/smoke_test.py   # compare methods over N sites
-scripts/run_sweeps.py   # Q1/Q2 sweeps
-scripts/plot_results.py # figures from the sweep results
-scripts/render_site.py  # site and rollout figures
-scripts/render_cases.py # six-panel case-study figure, --stats / --budget
-scripts/run_q3.py, run_q4.py, run_q5.py   # standalone component evaluations
-scripts/ctrl_run_q3.py, ctrl_run_q4.py, ctrl_run_q5.py   # closed-loop Q3-Q5 runs
-scripts/ctrl_run_q4_triage_large.py   # Q4 triage replication on 500 fresh sites
-scripts/run_retention.py, run_retention_checks.py, plot_retention.py   # track-retention ablation, fresh-site / region-size / false-positive checks, figure
-scripts/ctrl_run_retention.py   # retention in the closed-loop stack
-scripts/run_regime.py, run_reward_shape.py, run_reward_weights.py   # Q2 priority vs. nearest-first over horizon / survivor count, reward decay, and class weights
-scripts/mj_sudden_threat.py   # sudden close-range threat on both plants
-scripts/mj_sudden_fresh.py   # sudden threat with a higher confidence on fresh tracks (single / 10 Hz / 1 Hz re-detection)
-scripts/mj_sudden_stack.py   # sudden threat through the real stack (belief at 1 Hz, MPC, filter), with detection latency measured
-scripts/mj_headon_mpc.py   # head-on test, CBF filter vs a disc-only MPC (Table 27)
-scripts/pad_binding.py   # head-on test with injected tracking error (rescue/dist_plant.py): does the pad / ellipse bind?
-scripts/mj_pad_binding.py   # the same head-on test on the MuJoCo Go2 (flat, rubble with the rough and the flat policy), observed tracking gap
-scripts/margin_decomp.py   # closest approach = d_clear + eps_track + 2 * cp_offset: where the "+0.5 m" comes from
-scripts/ctrl_run_tradeoff.py   # margins x confirm range (a benchmark where margins cost score) and a dense noise sweep with a soft-constraint baseline
-scripts/ctrl_run_fast_detect.py, ctrl_run_fast_detect_fp.py, ctrl_run_speed_cost.py   # fast_detect cost, clutter cost (and the persistence gate), speed-cap cost
-scripts/mj_run_fast_detect_rubble.py   # fast_detect on the Go2 rubble benchmark
-scripts/mj_run_q3_rubble_conf.py, mj_run_q3_rubble_fresh.py   # cost of a higher confidence on rubble: every track vs. fresh tracks only
-scripts/profile_layers.py   # per-layer compute timing
-scripts/render_rollout.py, render_pipeline.py   # filtered vs. unfiltered rollout figure, pipeline diagram
-scripts/ctrl_run_consistency.py   # closed-loop sim vs. the frozen Q1 trends
-scripts/ctrl_stats.py, ctrl_plot.py   # paired-difference tables and figures
-scripts/mj_calibrate.py, mj_run_q3.py, mj_run_conf.py, mj_cbf_stress.py, render_mj.py   # MuJoCo Go2 checks and figures
-scripts/mj_rubble_calibrate.py, mj_run_q3_rubble.py, mj_run_q3_rubble_sweep.py, mj_run_q3_rubble_margins.py, plot_rubble_margins.py, render_mj_rubble.py   # Go2 on a rubble heightfield: tracking and falls, Q3, Q3 at other noise levels and pads, smaller margins, figure
-scripts/diag_stall.py   # logs the stack's state in episodes that stall (old stack vs. the fixes)
-tests/   # includes test_fast_detect.py (per-track confidence, provisional tracks, gate, disturbed plant) and test_scorecard.py
-docs/INTERFACES.md
+docs/              # INTERFACES.md (module contracts), sim.md (simulators, policy training, MuJoCo reproduction)
+scripts/
+  experiments/     # run_*.py (search/Q1-Q2, standalone Q3-Q5), ctrl_run_*.py (closed-loop Q3-Q5, retention, fast_detect, tradeoff), ctrl_stats.py, smoke_test.py
+  mujoco/          # mj_*.py: Go2 calibration, Q3 on flat ground and rubble, sudden-threat and head-on tests, pad binding
+  figures/         # render_*.py and plot_*.py, ctrl_plot.py: every figure in figures/
+  diagnostics/     # margin_decomp.py, pad_binding.py, profile_layers.py, diag_stall.py
+tests/             # pytest suite, one file per component
 ```
 
 ## Setup
@@ -983,19 +958,19 @@ docs/INTERFACES.md
 ```
 pip install -r requirements.txt
 python -m pytest
-PYTHONPATH=. python scripts/smoke_test.py 20 --sim go2
-RESCUE_SIM=go2 PYTHONPATH=. python scripts/run_sweeps.py 40
-PYTHONPATH=. python scripts/plot_results.py
-PYTHONPATH=. python scripts/render_cases.py --stats --budget   # -> figures/path_planning/cases_grid.png
+PYTHONPATH=. python scripts/experiments/smoke_test.py 20 --sim go2
+RESCUE_SIM=go2 PYTHONPATH=. python scripts/experiments/run_sweeps.py 40
+PYTHONPATH=. python scripts/figures/plot_results.py
+PYTHONPATH=. python scripts/figures/render_cases.py --stats --budget   # -> figures/path_planning/cases_grid.png
 # closed-loop Q3-Q5, as reported (last argument: workers; keep ~8 on Windows). Each Q4 triage study is its own sweep.
-PYTHONPATH=. python scripts/ctrl_run_q3.py 100 8                # Q3 (incl. confidence sweep)
-PYTHONPATH=. python scripts/ctrl_run_q4.py 100 8 default        # Q4 default scene
-PYTHONPATH=. python scripts/ctrl_run_q4.py 200 8 triage         # Q4 triage regime
-PYTHONPATH=. python scripts/ctrl_run_q4_triage_large.py 500 8   # triage replication, 500 fresh sites
-PYTHONPATH=. python scripts/ctrl_run_q5.py 100 8                # Q5 (three observers, heading-term sweep)
-PYTHONPATH=. python scripts/ctrl_run_consistency.py 100 8       # vs. frozen Q1; add a 4th argument 5 for a 5 m sensor
-PYTHONPATH=. python scripts/ctrl_stats.py                       # paired differences with 95% CIs (markdown)
-PYTHONPATH=. python scripts/ctrl_plot.py  # figures and markdown tables
+PYTHONPATH=. python scripts/experiments/ctrl_run_q3.py 100 8                # Q3 (incl. confidence sweep)
+PYTHONPATH=. python scripts/experiments/ctrl_run_q4.py 100 8 default        # Q4 default scene
+PYTHONPATH=. python scripts/experiments/ctrl_run_q4.py 200 8 triage         # Q4 triage regime
+PYTHONPATH=. python scripts/experiments/ctrl_run_q4_triage_large.py 500 8   # triage replication, 500 fresh sites
+PYTHONPATH=. python scripts/experiments/ctrl_run_q5.py 100 8                # Q5 (three observers, heading-term sweep)
+PYTHONPATH=. python scripts/experiments/ctrl_run_consistency.py 100 8       # vs. frozen Q1; add a 4th argument 5 for a 5 m sensor
+PYTHONPATH=. python scripts/experiments/ctrl_stats.py                       # paired differences with 95% CIs (markdown)
+PYTHONPATH=. python scripts/figures/ctrl_plot.py  # figures and markdown tables
 ```
 
 Requires Python 3.10+, numpy, scipy, matplotlib.
@@ -1003,34 +978,34 @@ Requires Python 3.10+, numpy, scipy, matplotlib.
 MuJoCo Go2 (optional; needs `pip install "mujoco==3.5.0" onnxruntime`, the MuJoCo version the policy was trained against):
 
 ```
-PYTHONPATH=. python scripts/mj_calibrate.py      # tracking checks and the tracking-error pad
-PYTHONPATH=. python scripts/mj_run_q3.py 40      # Q3 on both plants
-PYTHONPATH=. python scripts/mj_run_conf.py 20    # smaller safety regions, pad on/off
-PYTHONPATH=. python scripts/mj_cbf_stress.py     # head-on stress test of the filter
-PYTHONPATH=. python scripts/mj_rubble_calibrate.py --n 200 --policy sim/go2/policy_rough.onnx   # tracking and falls on rubble
-PYTHONPATH=. python scripts/mj_run_q3_rubble.py 100 16   # Q3 on rubble
-PYTHONPATH=. python scripts/mj_run_q3_rubble_sweep.py 100 16   # rubble at sigma_meas 1.0 / 2.0 m and pad 0.40 m
-PYTHONPATH=. python scripts/mj_run_q3_rubble_margins.py 100 16        # smaller margins on rubble
-PYTHONPATH=. python scripts/mj_run_q3_rubble_margins.py 100 16 low    # d_clear 0.4 / 0.25 / 0
-PYTHONPATH=. python scripts/plot_rubble_margins.py                # Figure 20 -> figures/mujoco/rubble_margins.png
-PYTHONPATH=. python scripts/mj_sudden_fresh.py 30 16                # fresh-track confidence in the sudden-threat test
+PYTHONPATH=. python scripts/mujoco/mj_calibrate.py      # tracking checks and the tracking-error pad
+PYTHONPATH=. python scripts/mujoco/mj_run_q3.py 40      # Q3 on both plants
+PYTHONPATH=. python scripts/mujoco/mj_run_conf.py 20    # smaller safety regions, pad on/off
+PYTHONPATH=. python scripts/mujoco/mj_cbf_stress.py     # head-on stress test of the filter
+PYTHONPATH=. python scripts/mujoco/mj_rubble_calibrate.py --n 200 --policy sim/go2/policy_rough.onnx   # tracking and falls on rubble
+PYTHONPATH=. python scripts/mujoco/mj_run_q3_rubble.py 100 16   # Q3 on rubble
+PYTHONPATH=. python scripts/mujoco/mj_run_q3_rubble_sweep.py 100 16   # rubble at sigma_meas 1.0 / 2.0 m and pad 0.40 m
+PYTHONPATH=. python scripts/mujoco/mj_run_q3_rubble_margins.py 100 16        # smaller margins on rubble
+PYTHONPATH=. python scripts/mujoco/mj_run_q3_rubble_margins.py 100 16 low    # d_clear 0.4 / 0.25 / 0
+PYTHONPATH=. python scripts/figures/plot_rubble_margins.py                # Figure 20 -> figures/mujoco/rubble_margins.png
+PYTHONPATH=. python scripts/mujoco/mj_sudden_fresh.py 30 16                # fresh-track confidence in the sudden-threat test
 # keep workers at 2-4 on a laptop and set OMP_NUM_THREADS=1; these are light (seconds per episode)
-PYTHONPATH=. python scripts/mj_sudden_stack.py 30 4 gate                 # persistence gate in the sudden-threat sweep (Table 25)
-PYTHONPATH=. python scripts/mj_sudden_stack.py 30 3 disc                 # filter vs disc-only MPC in the sudden-threat sweep (Table 26)
-PYTHONPATH=. python scripts/mj_headon_mpc.py 10 3                        # filter vs disc-only MPC, head-on (Table 27)
-PYTHONPATH=. python scripts/ctrl_run_fast_detect_fp.py 100 4 gate       # clutter cost with gate 1 / 2 / 3 (Table 24)
-PYTHONPATH=. python scripts/mj_pad_binding.py 40 4                      # pad on the Go2, head-on (needs mujoco)
-PYTHONPATH=. python scripts/margin_decomp.py 20 4                       # closest approach = d_clear + eps + 2 cp_offset
-PYTHONPATH=. python scripts/ctrl_run_tradeoff.py 60 4 a                 # margins x confirm range (Table 26)
-PYTHONPATH=. python scripts/ctrl_run_tradeoff.py 20 2 b                 # noise sweep, 8 survivors, soft baseline (Table 27)
-PYTHONPATH=. python scripts/mj_run_q3_rubble_conf.py 100 16            # 0.9 / 0.95 / 0.99 on every track
-PYTHONPATH=. python scripts/mj_run_q3_rubble_fresh.py 100 16           # fresh tracks only
-PYTHONPATH=. python scripts/render_mj_rubble.py 74       # figures/mujoco/go2_rubble_site_074.png (MUJOCO_GL=egl if headless)
-PYTHONPATH=. python scripts/render_mj.py         # -> figures/mujoco/ (five 600 s Go2 episodes in parallel)
-PYTHONPATH=. python scripts/diag_stall.py        # stack-state log of the sites that stalled before the fixes
+PYTHONPATH=. python scripts/mujoco/mj_sudden_stack.py 30 4 gate                 # persistence gate in the sudden-threat sweep (Table 25)
+PYTHONPATH=. python scripts/mujoco/mj_sudden_stack.py 30 3 disc                 # filter vs disc-only MPC in the sudden-threat sweep (Table 26)
+PYTHONPATH=. python scripts/mujoco/mj_headon_mpc.py 10 3                        # filter vs disc-only MPC, head-on (Table 27)
+PYTHONPATH=. python scripts/experiments/ctrl_run_fast_detect_fp.py 100 4 gate       # clutter cost with gate 1 / 2 / 3 (Table 24)
+PYTHONPATH=. python scripts/mujoco/mj_pad_binding.py 40 4                      # pad on the Go2, head-on (needs mujoco)
+PYTHONPATH=. python scripts/diagnostics/margin_decomp.py 20 4                       # closest approach = d_clear + eps + 2 cp_offset
+PYTHONPATH=. python scripts/experiments/ctrl_run_tradeoff.py 60 4 a                 # margins x confirm range (Table 26)
+PYTHONPATH=. python scripts/experiments/ctrl_run_tradeoff.py 20 2 b                 # noise sweep, 8 survivors, soft baseline (Table 27)
+PYTHONPATH=. python scripts/mujoco/mj_run_q3_rubble_conf.py 100 16            # 0.9 / 0.95 / 0.99 on every track
+PYTHONPATH=. python scripts/mujoco/mj_run_q3_rubble_fresh.py 100 16           # fresh tracks only
+PYTHONPATH=. python scripts/figures/render_mj_rubble.py 74       # figures/mujoco/go2_rubble_site_074.png (MUJOCO_GL=egl if headless)
+PYTHONPATH=. python scripts/figures/render_mj.py         # -> figures/mujoco/ (five 600 s Go2 episodes in parallel)
+PYTHONPATH=. python scripts/diagnostics/diag_stall.py        # stack-state log of the sites that stalled before the fixes
 ```
 
-Retraining the policy (Linux or WSL2, NVIDIA GPU; full commands, versions and the rough-terrain run, which needs 2048 environments on a 12 GB GPU, are in [`sim.md`](sim.md)): clone `unitree_rl_mjlab`, `pip install -e .` in a Python 3.11 environment, pin `mujoco==3.5.0` and `warp-lang==1.12.0` (the versions pip picks by default break mjlab 1.2.0), `pip install scipy`, then `python scripts/train.py Unitree-Go2-Flat --env.scene.num-envs=4096 --agent.logger tensorboard --agent.max-iterations 3000`. The exported `policy.onnx` lands in `logs/rsl_rl/go2_velocity/<run>/`.
+Retraining the policy (Linux or WSL2, NVIDIA GPU; full commands, versions and the rough-terrain run, which needs 2048 environments on a 12 GB GPU, are in [`docs/sim.md`](docs/sim.md)): clone `unitree_rl_mjlab`, `pip install -e .` in a Python 3.11 environment, pin `mujoco==3.5.0` and `warp-lang==1.12.0` (the versions pip picks by default break mjlab 1.2.0), `pip install scipy`, then `python scripts/train.py Unitree-Go2-Flat --env.scene.num-envs=4096 --agent.logger tensorboard --agent.max-iterations 3000`. The exported `policy.onnx` lands in `logs/rsl_rl/go2_velocity/<run>/`.
 
 ## Future work
 

@@ -1,6 +1,6 @@
 """Per-layer compute cost of the stack, measured (not estimated).
 
-Usage (repo root, on an otherwise idle machine):  PYTHONPATH=. python scripts/profile_layers.py [n_sites] [T]
+Usage (repo root, on an otherwise idle machine):  PYTHONPATH=. python scripts/diagnostics/profile_layers.py [n_sites] [T]
 
 Runs control-rate episodes (unicycle plant) and times each layer's calls with perf_counter, single process:
   plan   1 Hz   whole search/belief/route update          (RescueStack.plan)

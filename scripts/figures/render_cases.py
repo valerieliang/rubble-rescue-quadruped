@@ -1,6 +1,6 @@
 """Six-panel case-study figure: one rollout per error source of the drone prior.
 
-Usage: PYTHONPATH=. python scripts/render_cases.py [--out figures/path_planning/cases_grid.png]
+Usage: PYTHONPATH=. python scripts/figures/render_cases.py [--out figures/path_planning/cases_grid.png]
                                                     [--stats]
 
 Each panel is a seeded Go2-sim site run with the default prior (sigma 3 m, 10% miss, 1 false

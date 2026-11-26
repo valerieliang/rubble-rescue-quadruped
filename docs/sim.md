@@ -1,6 +1,6 @@
 # Simulation notes
 
-How the three simulators fit together, how the locomotion policies were trained, and how to reproduce it. Results tables are in [`README.md`](README.md); this file is the working record. This repository: <https://github.com/valerieliang/rubble-rescue-quadruped>. The robot and training code (the "doggy in sim") is Unitree's [`unitree_rl_mjlab`](https://github.com/unitreerobotics/unitree_rl_mjlab), which we ran in WSL2 and did not modify (see [Reproducing](#reproducing-from-scratch)).
+How the three simulators fit together, how the locomotion policies were trained, and how to reproduce it. Results tables are in [`README.md`](../README.md); this file is the working record. This repository: <https://github.com/valerieliang/rubble-rescue-quadruped>. The robot and training code (the "doggy in sim") is Unitree's [`unitree_rl_mjlab`](https://github.com/unitreerobotics/unitree_rl_mjlab), which we ran in WSL2 and did not modify (see [Reproducing](#reproducing-from-scratch)).
 
 ## Reproducing from scratch
 
@@ -38,11 +38,11 @@ git clone https://github.com/valerieliang/rubble-rescue-quadruped.git && cd rubb
 python -m venv ~/venv-rescue && source ~/venv-rescue/bin/activate
 pip install -r requirements.txt "mujoco==3.5.0" onnxruntime        # numpy 2.4.6, scipy 1.17.1, matplotlib 3.11.2, onnxruntime 1.32.0
 export PYTHONPATH=.
-python scripts/mj_calibrate.py                                       # flat-ground tracking and the 0.25 m pad
-python scripts/mj_rubble_calibrate.py --n 100                        # flat policy on rubble (the baseline below)
-python scripts/mj_rubble_calibrate.py --n 100 --policy sim/go2/policy_rough.onnx --label rough
-python scripts/mj_run_q3.py 100 8                                    # Q3 on unicycle and flat Go2
-python scripts/mj_run_q3_rubble.py 100 8                             # Q3 on rubble (last argument: workers)
+python scripts/mujoco/mj_calibrate.py                                       # flat-ground tracking and the 0.25 m pad
+python scripts/mujoco/mj_rubble_calibrate.py --n 100                        # flat policy on rubble (the baseline below)
+python scripts/mujoco/mj_rubble_calibrate.py --n 100 --policy sim/go2/policy_rough.onnx --label rough
+python scripts/mujoco/mj_run_q3.py 100 8                                    # Q3 on unicycle and flat Go2
+python scripts/mujoco/mj_run_q3_rubble.py 100 8                             # Q3 on rubble (last argument: workers)
 ```
 
 Everything is seeded: a site seed fixes the survivors, rubble, hazards and drone detections, and the rubble heightfield is a function of the site seed (`mj_terrain.make_heights`), so the same command reproduces the same terrain and the same paired comparisons.
@@ -107,7 +107,7 @@ Output lands in `logs/rsl_rl/go2_velocity/<timestamp>/` (checkpoints every 100 i
 
 ### Tracking on rubble, flat-trained vs rough-trained policy
 
-`scripts/mj_rubble_calibrate.py --n 200`, random starts and headings on 40 m x 40 m patches of each ground type, error after 1 s of a random constant command against the ideal unicycle (the same measurement as the 0.25 m pad):
+`scripts/mujoco/mj_rubble_calibrate.py --n 200`, random starts and headings on 40 m x 40 m patches of each ground type, error after 1 s of a random constant command against the ideal unicycle (the same measurement as the 0.25 m pad):
 
 | Ground | Policy | Falls | Median | 95% | 99% | Distance ratio |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -122,7 +122,7 @@ The rough policy cuts falls and tracking error on rubble and costs nothing on fl
 
 ### Q3 on rubble
 
-`scripts/mj_run_q3_rubble.py 100 16` (`runs/mj_q3_rubble.csv`): 100 sites, sigma_meas 0.5 m, confidence 0.7, pad 0.25 m, same sites and drone detections on every plant. An episode ends if the robot falls.
+`scripts/mujoco/mj_run_q3_rubble.py 100 16` (`runs/mj_q3_rubble.csv`): 100 sites, sigma_meas 0.5 m, confidence 0.7, pad 0.25 m, same sites and drone detections on every plant. An episode ends if the robot falls.
 
 | Plant | Variant | Score | Rescue rate | Episodes with clearance violation | Hazard entries | Min. distance | Falls |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -146,19 +146,19 @@ Paired by site, full stack vs the unicycle: flat ground -0.064 +/- 0.015, rubble
 
 | Script | What it does |
 | --- | --- |
-| `scripts/mj_calibrate.py` | Stand, walk and turn checks and the tracking-error pad on flat ground (`--policy` for another policy) |
-| `scripts/mj_rubble_calibrate.py` | Falls and tracking error on flat, rubble and hazard patches; run per policy |
-| `scripts/mj_run_q3.py` | Q3 on unicycle and flat-ground Go2 (the existing results) |
-| `scripts/mj_run_q3_rubble.py` | Q3 on four plants: unicycle, flat Go2, rubble with the flat policy, rubble with the rough policy |
-| `scripts/mj_run_conf.py`, `mj_cbf_stress.py`, `mj_sudden_threat.py` | Smaller safety regions, head-on and sudden-threat tests (flat ground) |
-| `scripts/render_mj.py` | Figures in `figures/mujoco/` |
+| `scripts/mujoco/mj_calibrate.py` | Stand, walk and turn checks and the tracking-error pad on flat ground (`--policy` for another policy) |
+| `scripts/mujoco/mj_rubble_calibrate.py` | Falls and tracking error on flat, rubble and hazard patches; run per policy |
+| `scripts/mujoco/mj_run_q3.py` | Q3 on unicycle and flat-ground Go2 (the existing results) |
+| `scripts/mujoco/mj_run_q3_rubble.py` | Q3 on four plants: unicycle, flat Go2, rubble with the flat policy, rubble with the rough policy |
+| `scripts/mujoco/mj_run_conf.py`, `mj_cbf_stress.py`, `mj_sudden_threat.py` | Smaller safety regions, head-on and sudden-threat tests (flat ground) |
+| `scripts/figures/render_mj.py` | Figures in `figures/mujoco/` |
 
 The Windows Python environment has no `mujoco`; the MuJoCo scripts were run from WSL (`~/venv-rescue`, which has `mujoco==3.5.0` and `onnxruntime`):
 
 ```bash
 cd /mnt/c/Users/TheAn/Documents/GitHub/rubble-rescue-quadruped
 source ~/venv-rescue/bin/activate
-PYTHONPATH=. python scripts/mj_rubble_calibrate.py --n 200 --policy sim/go2/policy_rough.onnx --label rough
+PYTHONPATH=. python scripts/mujoco/mj_rubble_calibrate.py --n 200 --policy sim/go2/policy_rough.onnx --label rough
 ```
 
 ## Status and next steps
@@ -167,6 +167,6 @@ PYTHONPATH=. python scripts/mj_rubble_calibrate.py --n 200 --policy sim/go2/poli
 - [x] Rough policy trained (3000 iterations) and exported to `sim/go2/policy_rough.onnx`
 - [x] Rubble calibration with both policies; `eps_track` left at 0.25 m
 - [x] Q3 on rubble (`mj_run_q3_rubble.py`), README, writeup and slides updated
-- [x] 100-site rubble check (`runs/mj_q3_rubble.csv`) and the rubble render (`scripts/render_mj_rubble.py`, `figures/mujoco/go2_rubble_site_074.png`)
+- [x] 100-site rubble check (`runs/mj_q3_rubble.csv`) and the rubble render (`scripts/figures/render_mj_rubble.py`, `figures/mujoco/go2_rubble_site_074.png`)
 - [ ] Several noise levels and a larger pad (0.35-0.40 m) on rubble
 - [ ] Hazard ground is still hard (9 of 200 falls and 0.80 m tracking error in the calibration); it only matters if the planner ever sends the robot there

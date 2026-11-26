@@ -1,6 +1,6 @@
 """Q3 on physical rubble: does the safety result hold when the Go2 walks over a heightfield?
 
-Usage (repo root):  PYTHONPATH=. python scripts/mj_run_q3_rubble.py [n_sites] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/mujoco/mj_run_q3_rubble.py [n_sites] [workers]
 
 Same sites and drone detections, full stack (MPC + CBF-QP, pad 0.25 m, confidence 0.7) and baseline 3 (no
 filter), on four plants (label in brackets):

@@ -1,6 +1,6 @@
 """Does fast_detect hurt when the onboard detector produces false detections (clutter)?
 
-Usage (repo root):  PYTHONPATH=. python scripts/ctrl_run_fast_detect_fp.py [n_sites] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/experiments/ctrl_run_fast_detect_fp.py [n_sites] [workers]
 Unicycle, sigma_meas 0.5 m, full stack, fast_detect off / on (third argument "gate": off / on / on with fast_gate 2 / 3). False detections arrive at a Poisson rate (per second) at a
 uniform random point within fp_radius of the robot (10 m = the whole sensor disc; 4 m = harsh, close to its path).
 The belief turns a false detection into a confirmed track as it always did; fast_detect additionally puts a provisional

@@ -1,6 +1,6 @@
 """Dry run: all methods on N sites through experiments.run_grid. Writes runs/dry_run_<sim>.csv.
 
-Usage: python scripts/run_dry_run.py [n_sites] [--sim {toy,go2}] [--workers W]
+Usage: python scripts/experiments/run_dry_run.py [n_sites] [--sim {toy,go2}] [--workers W]
 """
 import argparse
 import os

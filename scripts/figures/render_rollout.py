@@ -1,6 +1,6 @@
 """Closed-loop rollout on one site, with and without the CBF safety filter (report/talk figure).
 
-Usage: python scripts/render_rollout.py [SEED] [--sigma-meas 0.5] [--out figures/closed_loop]
+Usage: python scripts/figures/render_rollout.py [SEED] [--sigma-meas 0.5] [--out figures/closed_loop]
 
 Both variants see the same site and the same drone detections (paired, as in rescue/ctrl_experiments.py).
 Without SEED, the seed with the smallest unfiltered clearance among those where the unfiltered run
@@ -20,7 +20,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, Patch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from render_site import CLASS_STYLE, HALO, INK, MUTED, SURFACE, draw_regions   # noqa: E402
 
 from rescue import ctrl_sim                                                    # noqa: E402

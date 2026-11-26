@@ -1,6 +1,6 @@
 """Cost of the 10 Hz first-detection path (StackConfig.fast_detect) on the closed-loop benchmark.
 
-Usage (repo root):  PYTHONPATH=. python scripts/ctrl_run_fast_detect.py [n_sites] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/experiments/ctrl_run_fast_detect.py [n_sites] [workers]
 Unicycle plant, sigma_meas 0.5 m, 100 sites by default; full stack with fast_detect off and on. Writes runs/ctrl_fast_detect.csv.
 """
 import sys

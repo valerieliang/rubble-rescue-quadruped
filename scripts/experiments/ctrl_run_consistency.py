@@ -2,7 +2,7 @@
 against the frozen Q1 results from the waypoint-level Go2 sim (sim.py, README Table 1-2). Writes runs/consistency.csv
 and prints a markdown table.
 
-Usage: PYTHONPATH=. python scripts/ctrl_run_consistency.py [n_sites] [workers] [sensor_radius]
+Usage: PYTHONPATH=. python scripts/experiments/ctrl_run_consistency.py [n_sites] [workers] [sensor_radius]
 
 With sensor_radius = 5 the closed-loop sim uses the same sensing range as sim.py (default 10 m).
 

@@ -1,6 +1,6 @@
 """Sudden-threat test with a higher confidence on fresh tracks only (experiment 3).
 
-Usage (repo root):  PYTHONPATH=. python scripts/mj_sudden_fresh.py [n_seeds] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/mujoco/mj_sudden_fresh.py [n_seeds] [workers]
 
 Same setup as mj_sudden_threat.py (robot walking with no survivor known; at 3 s an estimate appears 1.5-6 m ahead,
 0.5 m measurement noise), filter on only. While fewer than ``n_fresh`` detections have been fused into the
@@ -11,12 +11,13 @@ estimate the filter uses confidence ``conf_fresh`` instead of 0.7; after that it
 Writes runs/mj_sudden_fresh.csv and prints violations / runs and the closest approach per setting.
 """
 import csv
+import os
 import sys
 from multiprocessing import Pool
 
 import numpy as np
 
-sys.path.insert(0, "scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mj_sudden_threat as st   # noqa: E402
 
 CONFS = (None, 0.9, 0.95, 0.99)          # None: baseline (0.7 everywhere)

@@ -5,7 +5,7 @@ hazard region, or within the survivor keep-out radius), next to the radius of th
 region a filter would have to respect at that noise. The filtered runs need the CBF-QP filter
 and are not produced here.
 
-Usage: RESCUE_SIM=go2 PYTHONPATH=. python scripts/run_q3.py [n_sites]
+Usage: RESCUE_SIM=go2 PYTHONPATH=. python scripts/experiments/run_q3.py [n_sites]
 """
 import os
 import sys

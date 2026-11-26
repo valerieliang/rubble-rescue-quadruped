@@ -1,6 +1,6 @@
 """A benchmark where safety margins can cost something, and where the unfiltered baseline can get worse.
 
-Usage (repo root):  PYTHONPATH=. python scripts/ctrl_run_tradeoff.py [n_sites] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/experiments/ctrl_run_tradeoff.py [n_sites] [workers]
 
 Two earlier results were uninformative by construction:
   * score did not move as the margins shrank (0.667-0.681 on rubble). The robot confirms a survivor from up to

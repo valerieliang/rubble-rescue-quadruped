@@ -12,7 +12,7 @@ length over straight-line distance.
 The MPC and the observer share beta, so this measures what the term can do when the observer model
 is right; ``--beta-obs`` evaluates against a different observer to see how that degrades.
 
-Usage: PYTHONPATH=. python scripts/run_q5.py [n_trials] [--beta-obs B]
+Usage: PYTHONPATH=. python scripts/experiments/run_q5.py [n_trials] [--beta-obs B]
 """
 import csv
 import os

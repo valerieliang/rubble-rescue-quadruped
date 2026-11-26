@@ -1,6 +1,6 @@
 """Thin-margin test on the MuJoCo Go2: shrink the safety region until the filter starts to fail.
 
-Usage (repo root):  PYTHONPATH=. python scripts/mj_run_conf.py [n_sites] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/mujoco/mj_run_conf.py [n_sites] [workers]
 
 With the default region (conf_p 0.95) the clearance margin is metres, so the 0.25 m tracking-error pad is
 never the binding term and the unicycle-vs-legged comparison in mj_run_q3.py cannot show whether the pad is

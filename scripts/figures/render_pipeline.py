@@ -1,6 +1,6 @@
 """Pipeline diagram for the report and talk: drone detections to robot command (vector art).
 
-Usage: python scripts/render_pipeline.py [--out figures]   (writes pipeline.svg, pipeline.pdf, pipeline.png)
+Usage: python scripts/figures/render_pipeline.py [--out figures]   (writes pipeline.svg, pipeline.pdf, pipeline.png)
 """
 import argparse
 import os

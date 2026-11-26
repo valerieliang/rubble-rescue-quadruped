@@ -1,6 +1,6 @@
 """Q3 on the MuJoCo Go2: does the safety filter still work when a learned legged plant replaces the unicycle?
 
-Usage (repo root):  PYTHONPATH=. python scripts/mj_run_q3.py [n_sites] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/mujoco/mj_run_q3.py [n_sites] [workers]
 
 Runs the same sites and drone detections with the full system (MPC + CBF-QP, pad eps_track = 0.25 m) and
 baseline 3 (same stack, no safety filter), once on the reduced-order unicycle and once on the MuJoCo Go2

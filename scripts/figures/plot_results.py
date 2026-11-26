@@ -1,6 +1,6 @@
 """Figures and tables from runs/*.csv -> runs/figures/*.png.
 
-Usage: PYTHONPATH=. python scripts/plot_results.py
+Usage: PYTHONPATH=. python scripts/figures/plot_results.py
 """
 import os
 

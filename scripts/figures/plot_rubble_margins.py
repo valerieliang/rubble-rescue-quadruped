@@ -1,7 +1,7 @@
 """Figure: clearance violations and closest approach vs. the required clearance d_clear, on rubble.
 
-Usage (repo root):  PYTHONPATH=. python scripts/plot_rubble_margins.py
-Reads runs/mj_q3_rubble_margins.csv and runs/mj_q3_rubble_margins_low.csv (scripts/mj_run_q3_rubble_margins.py);
+Usage (repo root):  PYTHONPATH=. python scripts/figures/plot_rubble_margins.py
+Reads runs/mj_q3_rubble_margins.csv and runs/mj_q3_rubble_margins_low.csv (scripts/mujoco/mj_run_q3_rubble_margins.py);
 writes figures/mujoco/rubble_margins.png.
 
 Main series: confidence 0.01, no tracking pad, d_clear from 1.0 m down to 0 (everything that can be shrunk is gone,

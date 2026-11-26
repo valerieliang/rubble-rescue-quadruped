@@ -1,6 +1,6 @@
 """Q4: survivor-state inference and its ablations. Writes runs/q4_*.csv.
 
-Usage: PYTHONPATH=. python scripts/ctrl_run_q4.py [n_sites] [workers]
+Usage: PYTHONPATH=. python scripts/experiments/ctrl_run_q4.py [n_sites] [workers]
 
 Variants: full (inference), no_state (baseline 4: priority fixed by the drone), oracle (baseline 5:
 communication oracle reveals z once the survivor is sensed). Ablations vary one setting at a time:

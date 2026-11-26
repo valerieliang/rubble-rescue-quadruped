@@ -1,6 +1,6 @@
 """Does the tracking-error pad (and the confidence ellipse) ever bind? Head-on stress test with injected error.
 
-Usage (repo root):  PYTHONPATH=. python scripts/pad_binding.py [n_runs] [workers]
+Usage (repo root):  PYTHONPATH=. python scripts/diagnostics/pad_binding.py [n_runs] [workers]
 
 In every closed-loop rubble run the pad and the ellipse were slack: the robot stayed about 2.4 m from survivors,
 so the filter's own margins (d_clear, control-point offset) did all the work. A head-on run is the opposite: a

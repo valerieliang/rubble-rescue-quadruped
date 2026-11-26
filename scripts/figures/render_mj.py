@@ -1,6 +1,6 @@
 """All MuJoCo Go2 figures for the README and the writeup -> figures/mujoco/.
 
-Usage (repo root):  PYTHONPATH=. python scripts/render_mj.py [workers]       (default 4 workers)
+Usage (repo root):  PYTHONPATH=. python scripts/figures/render_mj.py [workers]       (default 4 workers)
 
 Five 600 s Go2 episodes (sites 0, 6 and 74, plus site 6 with the old planner) run in parallel while the
 quick figures are drawn. Episodes use the same arguments as rescue.ctrl_experiments.run_ctrl_job, so
@@ -407,7 +407,7 @@ def chart_headon_paths():
 def chart_conf():
     path = "runs/mj_conf.csv"
     if not os.path.exists(path):
-        print("skip go2_conf_clearance.png:", path, "missing (run scripts/mj_run_conf.py)")
+        print("skip go2_conf_clearance.png:", path, "missing (run scripts/mujoco/mj_run_conf.py)")
         return
     rows = list(csv.DictReader(open(path)))
     cps = (0.5, 0.7, 0.9)

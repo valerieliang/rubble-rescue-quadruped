@@ -1,6 +1,6 @@
 """Q5: legible approach. Writes runs/q5.csv.
 
-Usage: PYTHONPATH=. python scripts/ctrl_run_q5.py [n_scenarios] [workers]
+Usage: PYTHONPATH=. python scripts/experiments/ctrl_run_q5.py [n_scenarios] [workers]
 
 Each scenario is one approach to a target among distractors on open ground, scored by three simulated
 observers (cost-model, heading-extrapolation, and a learned classifier). Sweeps the legibility weight lambda for each true
