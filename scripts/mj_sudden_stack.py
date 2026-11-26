@@ -83,8 +83,9 @@ def work(job):
                  Survivor(1, truth, Priority.CRITICAL, ResponseState.TRAPPED)), np.zeros(2))
     cfg = replace(StackConfig(), use_cbf=variant != "no_cbf", infer_state=False,
                   **(dict(conf_fresh=0.99, n_fresh=5) if variant == "fresh99" else {}),
-                  fast_detect=variant.startswith("fast"),             # explicit: the stack default is now on (gate 3)
-                  fast_gate=int(variant[-1]) if variant.startswith("fast_g") else 1,
+                  fast_detect=variant.startswith(("fast", "mpc_g")),  # explicit: the stack default is now on (gate 3)
+                  fast_gate=int(variant[-1]) if variant.startswith(("fast_g", "mpc_g")) else 1,
+                  **(dict(apply_filter=False, mpc_fast=True) if variant.startswith("mpc_g") else {}),   # disc-only MPC: same fast tracks, no CBF-QP
                   **(dict(conf_fresh=0.99, n_fresh=5) if variant == "fast99" else {}))
     sensor = float(np.hypot(d_app, lat))
     log = cs.run_episode_ctrl(site, PriorConfig(n_false_pos=0.0), cfg, seed, variant, T=T_RUN, sensor_radius=sensor,
@@ -103,12 +104,18 @@ VARIANTS_ALL = ("full", "no_cbf", "fresh99", "fast", "fast99")
 VARIANTS_GATE = ("full", "fast", "fast_g2", "fast_g3")    # third argument "gate": the persistence gate (fast_gate 2 / 3 detections within 0.5 s)
 
 
+# third argument "disc": the filter against a disc-only MPC. fast_g3 = default stack (MPC + CBF-QP, gate 3); mpc_g3 = the same
+# gated fast tracks and the same keep-out radii, but only as soft discs in the MPC cost, no CBF-QP; no_cbf = MPC with belief discs only.
+VARIANTS_DISC = ("fast_g3", "mpc_g3", "no_cbf")
+
+
 def main():
     n_seeds = int(sys.argv[1]) if len(sys.argv) > 1 else 30
     workers = int(sys.argv[2]) if len(sys.argv) > 2 else None
-    gate = len(sys.argv) > 3 and sys.argv[3] == "gate"
-    variants = VARIANTS_GATE if gate else VARIANTS_ALL
-    out = "runs/mj_sudden_gate.csv" if gate else "runs/mj_sudden_stack.csv"
+    mode = sys.argv[3] if len(sys.argv) > 3 else ""
+    gate = mode == "gate"
+    variants = {"gate": VARIANTS_GATE, "disc": VARIANTS_DISC}.get(mode, VARIANTS_ALL)
+    out = {"gate": "runs/mj_sudden_gate.csv", "disc": "runs/mj_sudden_disc.csv"}.get(mode, "runs/mj_sudden_stack.csv")
     jobs = [(n, v, d, lat, s, var) for n in ("unicycle", "mujoco") for v in SPEEDS for d in D_APPEAR
             for lat in LATERAL for s in range(n_seeds) for var in variants]
     print(len(jobs), "episodes ...", flush=True)
@@ -132,7 +139,7 @@ def summarize(rows, variants=VARIANTS_ALL):
                     r = [x for x in rows if (x["plant"], x["speed"], x["variant"], x["d_appear"]) == (name, v, var, d)]
                     cells.append(f"{sum(x['viol_steps'] > 0 for x in r):2d}/{len(r):2d}".rjust(9))
                 print(f"{name:9s} {v:5.1f} {var:>7s} | " + "  ".join(cells))
-    full = [x for x in rows if x["variant"] == "full"]
+    full = [x for x in rows if x["variant"] == variants[0]]
     lat = [x["t_belief"] - x["t_sense"] for x in full if np.isfinite(x["t_belief"]) and np.isfinite(x["t_sense"])]
     print(f"\nnever sensed: {sum(not np.isfinite(x['t_sense']) for x in full)}; sensed but never in belief: "
           f"{sum(np.isfinite(x['t_sense']) and not np.isfinite(x['t_belief']) for x in full)} of {len(full)} (full)")

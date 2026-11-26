@@ -843,6 +843,33 @@ The gate costs 5-7 extra violations in 2,160 (all at 0.75-1 m/s, 1.5-2.5 m) and 
 
 Speed for zero violations at 1.5 m is 0.5 m/s on the unicycle and 1.0 m/s on the Go2, at a cost of a third of the score on the unicycle. The remaining option, slowing only near unexplored ground, needs an occlusion model the simulator does not have; it is not tested.
 
+**Filter against a disc-only MPC.** The "MPC alone" rows above give the MPC only the belief's keep-out discs, which arrive at the 1 Hz plan tick, so they compare the filter with a controller that also knows less. The fair baseline (`StackConfig(apply_filter=False, mpc_fast=True)`) gives the MPC the same gated 10 Hz tracks as the filter, as soft keep-out discs of the same radius, and drops only the CBF-QP.
+
+**Table 26.** Sudden-threat runs with a violation, of 2,160 per variant (same sweep as Table 25; `scripts/mj_sudden_stack.py 30 W disc`; gate 3 throughout).
+
+| Variant | Unicycle | Go2 (MuJoCo) | Total |
+| --- | --- | --- | --- |
+| MPC + CBF filter (default) | 17 | 3 | 20 |
+| disc-only MPC (same fast tracks, no QP) | 69 | 12 | 81 |
+| MPC alone (belief discs only, no `fast_detect`) | 157 | 60 | 217 |
+
+By first-sighting distance, runs with a violation of 60 per cell, filter / disc-only MPC: at 1.5 m the unicycle has 0 / 6 (0.5 m/s), 6 / 27 (0.75) and 10 / 31 (1.0), and the Go2 has 0 / 0, 1 / 0 and 0 / 12. At 2.0 m only the unicycle at 1.0 m/s differs (0 / 5). At 2.5 m and beyond the disc-only MPC had no violation, and the filter had 3 (one each at unicycle 1.0, Go2 0.75 and Go2 1.0 m/s, all at 2.5 m). Neither variant fell. So the filter's hard constraint is worth about a factor of four over the soft disc at the same information (20 against 81 of 2,160), and the fast path itself accounts for most of the rest (81 against 217). The advantage is concentrated at late sightings (1.5 m) and high speed; it is not uniform, and at 2.5 m the soft disc did slightly better (0 against 3, too few to separate).
+
+**Table 27.** Head-on test, filter against disc-only MPC (`scripts/mj_headon_mpc.py 10 3`; 80 runs per cell: 8 heading offsets x 10 seeds, survivor known exactly, start 6 m away; MPC goal 6 m beyond the survivor). Closest approach in m, minimum over runs; no run broke the filter's bound or got inside 1 m in any cell, and none fell.
+
+| Plant | Pad (m) | Speed (m/s) | Filter | Disc-only MPC |
+| --- | --- | --- | --- | --- |
+| Unicycle | 0 | 0.5 | 1.504 | 1.514 |
+| Unicycle | 0 | 1.0 | 1.502 | 1.448 |
+| Unicycle | 0.25 | 0.5 | 1.753 | 1.779 |
+| Unicycle | 0.25 | 1.0 | 1.752 | 1.710 |
+| Go2 | 0 | 0.5 | 1.605 | 1.514 |
+| Go2 | 0 | 1.0 | 1.609 | 1.466 |
+| Go2 | 0.25 | 0.5 | 1.855 | 1.769 |
+| Go2 | 0.25 | 1.0 | 1.858 | 1.719 |
+
+Head-on with an exact estimate does not separate the two: the soft disc, sized to the filter's own margin, holds the 1 m line too, and ends 0.04-0.14 m closer than the filter on 6 of 8 cells (at most 0.14 m, on the Go2 at 1.0 m/s), still 0.45 m or more outside it. This test starts 6 m out, so the controller always has room to react. The separation in Table 26 comes from late sightings, where the soft cost cannot brake in time and the hard constraint can. What this does not show: a disc MPC with a different weight or horizon (the stack's `w_clear` 8 and 2 s horizon were not tuned for this), and noisy estimates in the head-on test.
+
 **Item 3 on the Go2** (`scripts/mj_pad_binding.py 40 W`; 40 runs per cell, 3 pads x 2 speeds x 2 cases per plant). Observed 1 s tracking gap, 95th percentile over runs: flat 0.19 m, rubble with the rough policy 0.71 m, rubble with the flat policy 0.89 m (Table 19's 0.36 m and 0.59 m are medians over random starts; this is the tail of head-on runs). **Zero violations in every cell** (each cell 0 of 40, 95% upper bound 9%); closest approach with the pad at 0 was 1.5-1.6 m (exact estimate) and 1.3-1.7 m (estimate error 0.5 m), about 0.5 m above the 1 m line. Falls: none on flat, 2-3 of 40 per cell on rubble and 4-11 of 40 with the flat policy, the same across pads (terrain, not the filter). So on the simulated Go2 the pad did **not** bind in a head-on approach, even when the observed gap exceeded the 0.5 m of slack: the filter has slowed the robot to a stop by then, and the Go2's error shrinks with speed whereas the injected error of Table 23 does not. Table 23 shows the pad is able to bind; this shows the Go2 as simulated does not put it there. A lateral pass at speed is untested.
 
 **Item 4: why score did not move.** The robot confirms from up to 3.5 m and every standoff the margins asked for (1.8-2.7 m) is inside that, so margins could not change when a survivor was reached. With the standoff set by the margins (`r_stand` 1 m) and the confirm range shortened, the trade-off appears (60 sites, unicycle, sigma_meas 0.5; `scripts/ctrl_run_tradeoff.py 60 W a`):
@@ -932,6 +959,7 @@ scripts/run_regime.py, run_reward_shape.py, run_reward_weights.py   # Q2 priorit
 scripts/mj_sudden_threat.py   # sudden close-range threat on both plants
 scripts/mj_sudden_fresh.py   # sudden threat with a higher confidence on fresh tracks (single / 10 Hz / 1 Hz re-detection)
 scripts/mj_sudden_stack.py   # sudden threat through the real stack (belief at 1 Hz, MPC, filter), with detection latency measured
+scripts/mj_headon_mpc.py   # head-on test, CBF filter vs a disc-only MPC (Table 27)
 scripts/pad_binding.py   # head-on test with injected tracking error (rescue/dist_plant.py): does the pad / ellipse bind?
 scripts/mj_pad_binding.py   # the same head-on test on the MuJoCo Go2 (flat, rubble with the rough and the flat policy), observed tracking gap
 scripts/margin_decomp.py   # closest approach = d_clear + eps_track + 2 * cp_offset: where the "+0.5 m" comes from
@@ -988,6 +1016,8 @@ PYTHONPATH=. python scripts/plot_rubble_margins.py                # Figure 20 ->
 PYTHONPATH=. python scripts/mj_sudden_fresh.py 30 16                # fresh-track confidence in the sudden-threat test -> runs/mj_sudden_fresh.csv
 # keep workers at 2-4 on a laptop and set OMP_NUM_THREADS=1; these are light (seconds per episode)
 PYTHONPATH=. python scripts/mj_sudden_stack.py 30 4 gate                 # persistence gate in the sudden-threat sweep -> runs/mj_sudden_gate.csv (Table 25)
+PYTHONPATH=. python scripts/mj_sudden_stack.py 30 3 disc                 # filter vs disc-only MPC in the sudden-threat sweep -> runs/mj_sudden_disc.csv (Table 26)
+PYTHONPATH=. python scripts/mj_headon_mpc.py 10 3                        # filter vs disc-only MPC, head-on -> runs/mj_headon_mpc.csv (Table 27)
 PYTHONPATH=. python scripts/ctrl_run_fast_detect_fp.py 100 4 gate       # clutter cost with gate 1 / 2 / 3 -> runs/ctrl_fast_detect_fp_gate.csv (Table 24)
 PYTHONPATH=. python scripts/mj_pad_binding.py 40 4                      # pad on the Go2, head-on -> runs/mj_pad_binding.csv (needs mujoco)
 PYTHONPATH=. python scripts/margin_decomp.py 20 4                       # closest approach = d_clear + eps + 2 cp_offset -> runs/margin_decomp.csv
