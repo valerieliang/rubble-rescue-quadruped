@@ -15,3 +15,13 @@ docs/refs
 
 # LaTeX build artifacts (tex/)
 tex/
+
+# Environments, caches, editors, OS
+.venv/
+venv/
+.ruff_cache/
+*.pyc
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

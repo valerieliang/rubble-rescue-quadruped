@@ -1,15 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "rubble-rescue-quadruped"
 version = "0.1.0"
 description = "Prior-guided, safety-aware search and approach for a quadruped in rubble (HCR course project)"
+readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["numpy", "scipy", "matplotlib"]
+dependencies = ["numpy>=1.21", "scipy>=1.8", "matplotlib>=3.5"]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+mujoco = ["mujoco==3.5.0", "onnxruntime"]
+dev = ["pytest>=6.2", "ruff"]
 
 [tool.setuptools]
 packages = ["rescue"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E9", "F"]
