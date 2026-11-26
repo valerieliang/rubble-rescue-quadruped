@@ -26,14 +26,15 @@ from .ctrl_sim import run_episode_ctrl
 from .drone_prior import PriorConfig
 from .interfaces import REWARDS, ResponseState
 from .metrics import oracle_score, rescue_rate, rescue_score, time_to_critical
+from .sim import Go2Params
 from .stack import R_RESCUE, VARIANTS, StackConfig
 
 PRIOR_KEYS = set(PriorConfig.__dataclass_fields__)
 BEH_KEYS = set(BehaviorConfig.__dataclass_fields__) - {"reliability"}
 SITE_KEYS = {"n_survivors", "frac_mobile"}
-SIM_KEYS = {"sigma_meas", "sensor_radius"}
+SIM_KEYS = {"sigma_meas", "sensor_radius", "fp_rate", "fp_radius", "rescue_radius"}
 STACK_KEYS = set(StackConfig.__dataclass_fields__) - {"reliability"}
-META = {"seed", "variant", "label", "T", "plant"}   # plant: "unicycle" (default) or "mujoco" (learned Go2)
+META = {"seed", "variant", "label", "T", "plant", "policy", "speed_scale"}   # plant: "unicycle" (default), "mujoco" (learned Go2, flat) or "mujoco_rubble"; policy: onnx path
 
 
 def usable_seeds(n: int, start: int = 0) -> list[int]:
@@ -98,9 +99,11 @@ def run_ctrl_job(job: dict) -> dict:
     site = make_site(seed, ov.get("n_survivors"), ov.get("frac_mobile"))
     sim_kw = {k: v for k, v in ov.items() if k in SIM_KEYS}
     plant = None
-    if job.get("plant") == "mujoco":
+    if job.get("plant") in ("mujoco", "mujoco_rubble"):
         from .mj_plant import Go2MujocoPlant   # local import: needs mujoco and onnxruntime
-        plant = Go2MujocoPlant()
+        plant = Go2MujocoPlant(rubble=job["plant"] == "mujoco_rubble", policy=job.get("policy"))
+    if "speed_scale" in job:     # speed cap as a fraction of the terrain speed (1.0 = default)
+        sim_kw["params"] = Go2Params(speed_scale=job["speed_scale"], max_turn_rate=1.0 if plant is not None else 1.5)
     log = run_episode_ctrl(site, prior, cfg, seed, variant, T=T, behavior=beh,
                            dwell=REWARDS[ov.get("reward", "base")].dwell, plant=plant, **sim_kw)
     rw = ov.get("reward", "base")
@@ -108,7 +111,7 @@ def run_ctrl_job(job: dict) -> dict:
     sw = rescue_score(site, log, T, state_weighted=REWARDS[rw])
     cw = rescue_score(site, log, T)
     row = {"seed": seed, "variant": variant, "label": label, **ov,
-           "plant": job.get("plant", "unicycle"), "fell": int(log.fell_at is not None),
+           "plant": job.get("plant", "unicycle"), "speed_scale": job.get("speed_scale", 1.0), "fell": int(log.fell_at is not None),
            "n_survivors_site": len(site.survivors),
            "norm_state": sw / o_state if o_state else float("nan"),
            "norm_class": cw / o_class if o_class else float("nan"),

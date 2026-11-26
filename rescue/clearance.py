@@ -72,9 +72,16 @@ class ClearanceRegion:
         return 2.0 * (np.asarray(p, float) - self.center)
 
 
+def is_fresh(t, fresh_n: int) -> bool:
+    """A track the robot has detected, but fewer than ``fresh_n`` times: its position is one or two noisy sightings."""
+    return bool(getattr(t, "confirmed", False)) and 1 <= getattr(t, "n_det", 0) < fresh_n
+
+
 def clearance_regions(tracks, confidence: float = 0.95, keepout: float = SURVIVOR_KEEPOUT,
-                      r_min: float = 0.1) -> list[ClearanceRegion]:
-    """One region per belief track with existence probability >= r_min."""
-    return [ClearanceRegion(np.array(t.mean, float), t.sigma**2 * np.eye(2), confidence, keepout,
+                      r_min: float = 0.1, fresh_confidence: float = 0.0, fresh_n: int = 0) -> list[ClearanceRegion]:
+    """One region per belief track with existence probability >= r_min. With ``fresh_confidence`` > 0, tracks
+    the robot has detected fewer than ``fresh_n`` times use that (higher) confidence instead."""
+    return [ClearanceRegion(np.array(t.mean, float), t.sigma**2 * np.eye(2),
+                            fresh_confidence if fresh_confidence and is_fresh(t, fresh_n) else confidence, keepout,
                             t.priority, t.r)
             for t in tracks if t.r >= r_min]

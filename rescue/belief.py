@@ -23,6 +23,7 @@ class Track:
     r: float                   # probability this track is a real survivor
     priority: Priority
     confirmed: bool = False    # a robot detection has matched it
+    n_det: int = 0             # robot detections fused into it so far (0 for a track that only has the drone prior)
 
 
 def disc_mass(mean: np.ndarray, sigma: float, center: np.ndarray, radius: float) -> float:
@@ -58,7 +59,7 @@ class Belief:
             i = self._nearest_track(d.pos, robot_pos, sensor_radius, matched)
             if i is None:   # drone missed this survivor: start a confirmed track
                 self.tracks.append(Track(np.array(d.pos, float), sm, 1.0,
-                                         d.priority, confirmed=True))
+                                         d.priority, confirmed=True, n_det=1))
                 matched.add(len(self.tracks) - 1)
                 continue
             matched.add(i)
@@ -93,6 +94,7 @@ class Belief:
         t.mean = t.mean + k * (np.asarray(d.pos, float) - t.mean)
         t.sigma = float(np.sqrt((1 - k) * s2))
         t.r, t.confirmed, t.priority = 1.0, True, d.priority
+        t.n_det += 1
 
     def _negative_update(self, t: Track, center: np.ndarray, radius: float) -> None:
         if t.confirmed and not self.forget_confirmed:
@@ -103,11 +105,13 @@ class Belief:
         t.r = r * miss / (r * miss + (1.0 - r))
 
     def clearance_regions(self, confidence: float = 0.95, keepout: float | None = None,
-                          r_min: float = 0.1):
-        """Confidence-ellipse keep-out region per track, for the safety filter (see clearance.py)."""
+                          r_min: float = 0.1, fresh_confidence: float = 0.0, fresh_n: int = 0):
+        """Confidence-ellipse keep-out region per track, for the safety filter (see clearance.py).
+        ``fresh_confidence`` > 0: a robot-detected track with fewer than ``fresh_n`` detections fused uses it."""
         from .clearance import clearance_regions
         kw = {} if keepout is None else {"keepout": keepout}
-        return clearance_regions(self.tracks, confidence, r_min=r_min, **kw)
+        return clearance_regions(self.tracks, confidence, r_min=r_min, fresh_confidence=fresh_confidence,
+                                 fresh_n=fresh_n, **kw)
 
     def expected_survivors(self) -> float:
         return sum(t.r for t in self.tracks)

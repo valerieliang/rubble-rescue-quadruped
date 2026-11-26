@@ -10,8 +10,10 @@ someone and the onboard detector sees them late, or a track jumps close. Only th
 closed-loop stack, confidence 0.7, pad 0.25 m) can stop the robot; the nominal controller never slows down.
 
 Two versions: "single" keeps the first noisy estimate for the whole run (worst case: one bad sighting), and
-"fused" re-detects at 10 Hz (90% detection probability) and Kalman-fuses each detection into the estimate, as the
-stack's belief does (the region keeps the stack's 0.5 m sigma floor).
+"fused" re-detects at 10 Hz (90% detection probability) and Kalman-fuses each detection into the estimate (the
+region keeps the stack's 0.5 m sigma floor). The stack's belief does NOT fuse at 10 Hz (that is the optional avg_meas),
+and it also delays a first sighting until the next 1 Hz plan tick; this stand-alone filter test has neither delay,
+so it is a best case. The stack itself is tested in scripts/mj_sudden_stack.py.
 
 Reported per (plant, speed, filter, d_appear): runs closer than 1 m to the true survivor (violations), the
 closest approach, and the filter's infeasible steps. Below some d_appear no filter can stop the robot in time
@@ -35,9 +37,15 @@ LATERAL = (0.0, 0.7)
 GOAL = np.array([200.0, 0.0])
 
 
-def run(plant, v_nom, use_filter, d_appear, lateral, seed, fuse=False):
+def run(plant, v_nom, use_filter, d_appear, lateral, seed, fuse=False, conf_fresh=None, n_fresh=0, fuse_every=1):
+    """conf_fresh / n_fresh: while fewer than n_fresh detections have been fused into the estimate, the filter uses
+    confidence conf_fresh instead of 0.7 (None = off, the original behaviour). fuse_every: control steps between
+    detections (1 = 10 Hz, 10 = the stack's 1 Hz belief update)."""
     rng = np.random.default_rng(seed)
     filt = CBFFilter(SafetyParams(conf_p=0.7, d_clear=D_CLEAR, eps_track=0.25, w_max=W_MAX))
+    filt_fresh = CBFFilter(SafetyParams(conf_p=conf_fresh, d_clear=D_CLEAR, eps_track=0.25, w_max=W_MAX)) \
+        if conf_fresh else filt
+    n_det = 0
     pos, heading, v = np.zeros(2), 0.0, 0.0
     if plant is not None:
         plant.reset(pos, heading)
@@ -51,15 +59,17 @@ def run(plant, v_nom, use_filter, d_appear, lateral, seed, fuse=False):
             est = truth + rng.normal(0, SIGMA_MEAS, 2)
             err0 = float(np.linalg.norm(est - truth))
             sig = SIGMA_MEAS
-        elif fuse and truth is not None and rng.random() < 0.9:
+            n_det = 1
+        elif fuse and truth is not None and i % fuse_every == 0 and rng.random() < 0.9:
             k = sig**2 / (sig**2 + SIGMA_MEAS**2)
             est = est + k * (truth + rng.normal(0, SIGMA_MEAS, 2) - est)
+            n_det += 1
             sig = max(np.sqrt((1 - k) * sig**2), 0.5 * SIGMA_MEAS)
         d = GOAL - pos
         err = (np.arctan2(d[1], d[0]) - heading + np.pi) % (2 * np.pi) - np.pi
         u = np.array([v_nom, float(np.clip(2.0 * err, -W_MAX, W_MAX))])
         if use_filter and truth is not None:
-            u, info = filt.filter(pos, heading, u, v_nom, [], [(est, np.eye(2) * SIGMA_MEAS**2)])
+            u, info = (filt_fresh if n_det < n_fresh else filt).filter(pos, heading, u, v_nom, [], [(est, np.eye(2) * SIGMA_MEAS**2)])
             infeasible += not info["feasible"]
         if plant is None:
             pos, heading, v = step_unicycle(pos, heading, v, float(u[0]), float(u[1]), DT,

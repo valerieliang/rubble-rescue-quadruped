@@ -55,12 +55,19 @@ class StackConfig:
     r_stand: float = 2.5             # standoff distance when no safety region is larger
     sigma_floor: float = 0.5         # belief std floor (survivors may move, so never fully certain)
     r_safe: float = 0.2              # tracks below this existence probability get no barrier
+    conf_fresh: float = 0.0          # >0: confidence for a robot-detected track with fewer than n_fresh detections fused
+    n_fresh: int = 5                 # (the belief updates at 1 Hz, so 5 detections is about 5 s); off while conf_fresh is 0
     # state inference
     prompt_range: float = 6.0
     prompt_gap: float = 3.0
     max_prompts: int = 3
     motion_window: float = 5.0
-    avg_meas: bool = False           # fuse all 10 Hz detections of the last second (mean, sigma_meas/sqrt(n)), not one
+    fast_detect: bool = True         # 10 Hz first-detection path: an onboard detection no belief track explains goes to the filter at once (on since the gate, below, removed its clutter cost)
+    fast_gate: int = 3               # a provisional track reaches the filter only after this many detections within fast_window
+    fast_window: float = 0.5         # s (a real survivor in range is detected on ~90% of 10 Hz steps; a phantom rarely repeats)
+    fast_ttl: float = 5.0            # s a provisional track survives without a detection
+    apply_filter: bool = True        # False (with use_cbf): the MPC sees the keep-out discs but the CBF-QP does not run (soft-constraint baseline)
+    avg_meas: bool = False         # fuse all 10 Hz detections of the last second (mean, sigma_meas/sqrt(n)), not one
     hint_acc: float = 0.7            # accuracy the robot assumes for the drone's state cue
     reliability: float = 0.8         # q the robot assumes when interpreting prompt responses
     walk_speed: float = 0.3          # v0 the robot assumes for mobile survivors
@@ -153,6 +160,7 @@ class RescueStack:
         self.last_prompt: dict[int, float] = {}
         self.revealed: set[int] = set()
         self._det_buf: list[Detection] = []
+        self.fast: list[list] = []             # [mean, sigma, t_last] provisional tracks from the 10 Hz path (fast_detect)
         self.target = None
         self.target_key: int | None = None
         self.approach_start = site.start.astype(float).copy()
@@ -184,7 +192,8 @@ class RescueStack:
             return out
 
         tracks = [tr for tr in self.search.belief.tracks if tr.r >= self.cfg.r_safe]
-        regions = self.search.belief.clearance_regions(self.cfg.conf_p, self.cfg.d_clear, self.cfg.r_safe)
+        regions = self.search.belief.clearance_regions(self.cfg.conf_p, self.cfg.d_clear, self.cfg.r_safe,
+                                                       self.cfg.conf_fresh, self.cfg.n_fresh)
         regions += [ClearanceRegion(q, np.eye(2) * self.cfg.sigma_floor**2, self.cfg.conf_p, self.cfg.d_clear,
                                     Priority.STABLE, 1.0) for q in self.keepout]
         target = self.target.mean if self.target is not None else np.asarray(self.fallback_wp, float)
@@ -216,6 +225,8 @@ class RescueStack:
     def perceive(self, t: float, pos, detected) -> list[PromptRequest]:
         """10 Hz: record motion samples, decide which survivors to prompt / reveal."""
         reqs: list[PromptRequest] = []
+        if self.cfg.fast_detect:
+            self._fast_update(t, detected)
         if self.cfg.avg_meas:
             self._det_buf += list(detected)
         if not (self.cfg.infer_state or self.cfg.comm_oracle):
@@ -243,6 +254,31 @@ class RescueStack:
                 self.revealed.add(key)
                 reqs.append(PromptRequest(key, d.source_id, "reveal"))
         return reqs
+
+    def _fast_update(self, t: float, detected) -> None:
+        """Provisional tracks for detections the belief has no confirmed track for; fused at 10 Hz, dropped once the
+        1 Hz belief holds the survivor (or after 5 s without a detection). Used by the filter only."""
+        confirmed = [tr.mean for tr in self.search.belief.tracks if tr.confirmed]
+        self.fast = [f for f in self.fast if t - f[2] < self.cfg.fast_ttl
+                     and not any(np.linalg.norm(f[0] - m) < 3.0 for m in confirmed)]
+        for d in detected:
+            if any(np.linalg.norm(d.pos - m) < 3.0 for m in confirmed):
+                continue
+            for f in self.fast:
+                if np.linalg.norm(f[0] - d.pos) < 2.0:
+                    k = f[1] ** 2 / (f[1] ** 2 + self.sigma_meas ** 2)
+                    f[0] = f[0] + k * (np.asarray(d.pos, float) - f[0])
+                    f[1] = max(float(np.sqrt((1 - k) * f[1] ** 2)), self.cfg.sigma_floor)
+                    f[2] = t
+                    f[3] = [ti for ti in f[3] if t - ti <= self.cfg.fast_window] + [t]
+                    break
+            else:
+                self.fast.append([np.asarray(d.pos, float).copy(), max(self.sigma_meas, self.cfg.sigma_floor), t, [t]])
+
+    def _fast_active(self, t: float) -> list[list]:
+        """Provisional tracks the filter uses: at least ``fast_gate`` detections within the last ``fast_window`` s."""
+        g, w = self.cfg.fast_gate, self.cfg.fast_window
+        return [f for f in self.fast if sum(t - ti <= w + 1e-9 for ti in f[3]) >= g or g <= 1]
 
     def _match(self, p):
         best, bd = None, 3.0
@@ -349,7 +385,9 @@ class RescueStack:
         return Observation(obs.t, obs.robot_pos, obs.sensor_radius, dets, obs.rescued), sig
 
     def boundary(self, track) -> float:
-        return self.cbf.region_radius(track.sigma)
+        from .clearance import is_fresh
+        fresh = self.cfg.conf_fresh and is_fresh(track, self.cfg.n_fresh)
+        return self.cbf.region_radius(track.sigma, self.cfg.conf_fresh if fresh else None)
 
     def goal(self, pos) -> np.ndarray:
         """Standoff pose: on the robot's side of the target, outside its safety region."""
@@ -393,11 +431,14 @@ class RescueStack:
                     leg = (goals, k, self.approach_start, lam, self.cfg.obs_beta, lam_h)
         mpc_hazards = self.hazards if self.cfg.hazard_aware_planner else ()
         u_nom = np.array(self.mpc.solve(pos, heading, v_cap, wp, mpc_hazards, discs, leg))
-        if not self.cfg.use_cbf:
+        if not self.cfg.use_cbf or not self.cfg.apply_filter:
             self.last_info = {"modified": False, "feasible": True}
             return u_nom
-        ell = [(tr.mean, np.eye(2) * tr.sigma**2) for tr in tracks]
+        from .clearance import is_fresh
+        ell = [(tr.mean, np.eye(2) * tr.sigma**2,
+                self.cfg.conf_fresh if self.cfg.conf_fresh and is_fresh(tr, self.cfg.n_fresh) else None) for tr in tracks]
         ell += [(q, np.eye(2) * self.cfg.sigma_floor**2) for q in self.keepout]
+        ell += [(f[0], np.eye(2) * f[1]**2, self.cfg.conf_fresh or None) for f in self._fast_active(t)]
         u, info = self.cbf.filter(pos, heading, u_nom, v_cap, self.hazards, ell)
         self.last_info = info
         return u
