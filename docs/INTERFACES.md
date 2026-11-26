@@ -57,6 +57,9 @@ The controller is wired into a simulator by `rescue/ctrl_sim.py` (see the last s
 
 Same plant as `sim.py`; the Q1-Q2 simulator is unchanged. `StackConfig.controller` selects the controller: `"closed_loop"` (`ctrl_mpc.py` + `safety.py`, default) or `"components"` (`mpc.ApproachController` + `cbf.SafetyFilter`).
 
+**Fast first-detection path (`StackConfig`).** `fast_detect` (default `True`) keeps 10 Hz provisional tracks that only the safety filter sees; the 1 Hz belief is unchanged. A provisional track reaches the filter after `fast_gate` (default 3) detections within `fast_window` (0.5 s) and expires after `fast_ttl` (5 s); `fast_gate=1` is the ungated path used by the older experiments. `apply_filter=False` leaves the MPC's keep-out discs but turns the CBF-QP off (a soft-constraint baseline). Safety metrics for every experiment come from `rescue/scorecard.py` (Wilson interval, violation-seconds, closest-approach slack, paired score difference). `metrics.oracle_score` raises above 9 survivors because it brute-forces visiting orders.
+
+
 | Item | Value |
 |---|---|
 | Control loop | MPC + CBF-QP at 10 Hz output `(v, omega)`, the Go2 velocity interface; search runs at 1 Hz |
